@@ -11,6 +11,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { currentLanguage, type TFunction } from "@/lib/i18n";
 import type { Progress, ProgressSummary } from "@/lib/types";
 
 function accuracyTone(accuracy: number): { bar: string; text: string } {
@@ -27,7 +28,8 @@ function formatDate(value: string | null): string {
   if (Number.isNaN(parsed.getTime())) {
     return "—";
   }
-  return parsed.toLocaleDateString("bn-BD", { day: "numeric", month: "short" });
+  const locale = currentLanguage() === "bn" ? "bn-BD" : "en-GB";
+  return parsed.toLocaleDateString(locale, { day: "numeric", month: "short" });
 }
 
 export function ProgressPanel({
@@ -35,12 +37,14 @@ export function ProgressPanel({
   refreshKey,
   onGoQuiz,
   onToast,
+  t,
 }: {
   student: string;
   /** Bumped by the quiz tab after a graded attempt, so this panel refetches. */
   refreshKey: number;
   onGoQuiz: () => void;
   onToast: (tone: "error" | "info", message: string) => void;
+  t: TFunction;
 }) {
   const [progress, setProgress] = useState<Progress | null>(null);
   const [summary, setSummary] = useState<ProgressSummary | null>(null);
@@ -55,13 +59,14 @@ export function ProgressPanel({
     try {
       setSummary(await api.summary(student));
     } catch (failure) {
-      const message =
-        failure instanceof ApiError ? failure.message : "অভিভাবকের সারসংক্ষেপ আনা যায়নি।";
-      onToast("error", message);
+      onToast(
+        "error",
+        failure instanceof ApiError ? failure.message : t("progress.summaryFailed"),
+      );
     } finally {
       setSummaryLoading(false);
     }
-  }, [onToast, student]);
+  }, [onToast, student, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,9 +90,7 @@ export function ProgressPanel({
         if (cancelled) {
           return;
         }
-        const message =
-          failure instanceof ApiError ? failure.message : "প্রোগ্রেস আনা যায়নি, আবার চেষ্টা করুন।";
-        setError(message);
+        setError(failure instanceof ApiError ? failure.message : t("progress.loadFailed"));
         setLoading(false);
       }
     })();
@@ -95,13 +98,13 @@ export function ProgressPanel({
     return () => {
       cancelled = true;
     };
-  }, [attempt, loadSummary, refreshKey, student]);
+  }, [attempt, loadSummary, refreshKey, student, t]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 px-4 py-20 text-sm text-neutral-600">
-        <Loader2 className="size-4 animate-spin text-accent" />
-        অগ্রগতি লোড হচ্ছে...
+        <Loader2 className="size-4 animate-spin text-emerald-600" />
+        {t("progress.loading")}
       </div>
     );
   }
@@ -120,7 +123,7 @@ export function ProgressPanel({
           }}
           className="mt-4 rounded-full bg-ink px-5 py-2.5 text-[13px] font-medium text-white"
         >
-          আবার চেষ্টা করো
+          {t("progress.retry")}
         </button>
       </div>
     );
@@ -132,20 +135,19 @@ export function ProgressPanel({
   if (!hasData) {
     return (
       <div className="mx-auto flex w-full max-w-3xl flex-col items-center px-4 py-16 text-center">
-        <span className="grid size-12 place-items-center rounded-2xl bg-accent-soft text-accent">
+        <span className="grid size-12 place-items-center rounded-2xl bg-emerald-50 text-emerald-700">
           <LineChart className="size-5" />
         </span>
-        <h2 className="pt-4 text-base font-bold text-ink">এখনো কোনো ফলাফল নেই</h2>
+        <h2 className="pt-4 text-base font-bold text-ink">{t("progress.emptyTitle")}</h2>
         <p className="max-w-sm pt-1 text-[13px] leading-relaxed text-neutral-600">
-          {student}-এর প্রথম কুইজ দিলেই এখানে অধ্যায়ভিত্তিক স্কোর, দুর্বল বিষয় ও অভিভাবকের জন্য
-          সারসংক্ষেপ দেখা যাবে।
+          {t("progress.emptyBody", { name: student })}
         </p>
         <button
           type="button"
           onClick={onGoQuiz}
           className="mt-5 inline-flex items-center gap-2 rounded-full bg-ink px-5 py-2.5 text-[13.5px] font-medium text-white transition hover:bg-neutral-800"
         >
-          কুইজে যাও
+          {t("progress.goQuiz")}
           <ArrowRight className="size-3.5" />
         </button>
       </div>
@@ -163,10 +165,10 @@ export function ProgressPanel({
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-[12px] text-muted">
             <LineChart className="size-3.5" />
-            {student} · অগ্রগতি রিপোর্ট
+            {t("progress.title", { name: student })}
           </p>
           <h2 className="text-base font-bold text-ink">
-            মোট নির্ভুলতা {overall?.accuracy ?? 0}%
+            {t("progress.overallAccuracy", { accuracy: overall?.accuracy ?? 0 })}
           </h2>
         </div>
         <button
@@ -175,22 +177,26 @@ export function ProgressPanel({
           disabled={summaryLoading}
           className="flex items-center gap-1.5 rounded-full bg-neutral-100 px-4 py-2 text-[13px] font-medium text-ink transition hover:bg-neutral-200 disabled:opacity-60"
         >
-          {summaryLoading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-          সারসংক্ষেপ হালনাগাদ
+          {summaryLoading ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="size-3.5" />
+          )}
+          {t("progress.refreshSummary")}
         </button>
       </header>
 
       <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        <Stat label="কুইজ" value={String(overall?.quiz_count ?? 0)} />
-        <Stat label="প্রশ্ন" value={String(overall?.questions ?? 0)} />
-        <Stat label="সঠিক" value={String(overall?.correct ?? 0)} />
-        <Stat label="নির্ভুলতা" value={`${overall?.accuracy ?? 0}%`} accent />
+        <Stat label={t("progress.stat.quizzes")} value={String(overall?.quiz_count ?? 0)} />
+        <Stat label={t("progress.stat.questions")} value={String(overall?.questions ?? 0)} />
+        <Stat label={t("progress.stat.correct")} value={String(overall?.correct ?? 0)} />
+        <Stat label={t("progress.stat.accuracy")} value={`${overall?.accuracy ?? 0}%`} accent />
       </div>
 
       <section className="mt-4 rounded-2xl bg-surface p-4 card-shadow">
         <h3 className="flex items-center gap-1.5 text-[13.5px] font-bold text-ink">
-          <Target className="size-4 text-accent" />
-          অধ্যায়ভিত্তিক স্কোর
+          <Target className="size-4 text-emerald-600" />
+          {t("progress.perChapter")}
         </h3>
         <div className="mt-3 space-y-2.5">
           {chapters.map((chapter) => {
@@ -207,7 +213,11 @@ export function ProgressPanel({
                   <p className={`shrink-0 text-[12.5px] font-semibold ${tone.text}`}>
                     {chapter.accuracy}%
                     <span className="pl-1 font-normal text-muted">
-                      ({chapter.correct}/{chapter.questions} · {chapter.quiz_count} কুইজ)
+                      {t("progress.chapterMeta", {
+                        correct: chapter.correct,
+                        questions: chapter.questions,
+                        quizzes: chapter.quiz_count,
+                      })}
                     </span>
                   </p>
                 </div>
@@ -226,11 +236,17 @@ export function ProgressPanel({
           <div className="mt-3 grid gap-2 border-t border-neutral-100 pt-3 sm:grid-cols-2">
             <p className="flex items-center gap-1.5 text-[12px] text-emerald-700">
               <TrendingUp className="size-3.5" />
-              সবচেয়ে ভালো: {bestChapter.chapter} ({bestChapter.accuracy}%)
+              {t("progress.best", {
+                chapter: bestChapter.chapter,
+                accuracy: bestChapter.accuracy,
+              })}
             </p>
             <p className="flex items-center gap-1.5 text-[12px] text-rose-700">
               <TrendingDown className="size-3.5" />
-              সবচেয়ে দুর্বল: {worstChapter.chapter} ({worstChapter.accuracy}%)
+              {t("progress.weakest", {
+                chapter: worstChapter.chapter,
+                accuracy: worstChapter.accuracy,
+              })}
             </p>
           </div>
         ) : null}
@@ -239,11 +255,11 @@ export function ProgressPanel({
       <section className="mt-4 rounded-2xl bg-surface p-4 card-shadow">
         <h3 className="flex items-center gap-1.5 text-[13.5px] font-bold text-ink">
           <TrendingDown className="size-4 text-rose-500" />
-          দুর্বল বিষয়
+          {t("progress.weakTopics")}
         </h3>
         {weakTopics.length === 0 ? (
           <p className="pt-2 text-[12.5px] leading-relaxed text-neutral-600">
-            এখনো কোনো স্পষ্ট দুর্বলতা ধরা পড়েনি — চালিয়ে যাও!
+            {t("progress.noWeak")}
           </p>
         ) : (
           <ul className="mt-2.5 space-y-2">
@@ -267,47 +283,51 @@ export function ProgressPanel({
 
       <section className="mt-4 rounded-2xl bg-surface p-4 card-shadow">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-[13.5px] font-bold text-ink">অভিভাবকের জন্য সারসংক্ষেপ</h3>
+          <h3 className="text-[13.5px] font-bold text-ink">{t("progress.parentSummary")}</h3>
           {summary ? (
             <span
               className={`rounded-full px-2 py-0.5 text-[10.5px] font-medium ${
                 summary.source === "llm"
-                  ? "bg-accent-soft text-accent-strong"
+                  ? "bg-emerald-50 text-emerald-700"
                   : "bg-neutral-100 text-neutral-600"
               }`}
             >
-              {summary.source === "llm" ? "AI-লিখিত" : "হিসাব থেকে"}
+              {summary.source === "llm" ? t("progress.aiWritten") : t("progress.fromNumbers")}
             </span>
           ) : null}
         </div>
         {summaryLoading && !summary ? (
           <p className="flex items-center gap-2 pt-3 text-[12.5px] text-muted">
-            <Loader2 className="size-3.5 animate-spin" /> সারসংক্ষেপ লেখা হচ্ছে...
+            <Loader2 className="size-3.5 animate-spin" /> {t("progress.summaryLoading")}
           </p>
         ) : (
           <p className="pt-2.5 text-[13px] leading-[1.9] whitespace-pre-line text-neutral-700">
-            {summary?.summary ?? "সারসংক্ষেপ তৈরি হয়নি — “সারসংক্ষেপ হালনাগাদ” চাপো।"}
+            {summary?.summary ?? t("progress.summaryMissing")}
           </p>
         )}
       </section>
 
       <section className="mt-4 rounded-2xl bg-surface p-4 card-shadow">
-        <h3 className="text-[13.5px] font-bold text-ink">সাম্প্রতিক কুইজ</h3>
+        <h3 className="text-[13.5px] font-bold text-ink">{t("progress.recent")}</h3>
         <ul className="mt-2 divide-y divide-neutral-100">
-          {(progress?.recent ?? []).map((attempt) => (
-            <li key={attempt.quiz_id} className="flex items-center justify-between gap-2 py-2">
+          {(progress?.recent ?? []).map((attemptItem) => (
+            <li
+              key={attemptItem.quiz_id}
+              className="flex items-center justify-between gap-2 py-2"
+            >
               <div className="min-w-0">
-                <p className="truncate text-[12.5px] text-ink">{attempt.chapter}</p>
+                <p className="truncate text-[12.5px] text-ink">{attemptItem.chapter}</p>
                 <p className="truncate text-[11px] text-muted">
-                  {attempt.subject_label || attempt.subject} · {formatDate(attempt.created_at)}
+                  {attemptItem.subject_label || attemptItem.subject} ·{" "}
+                  {formatDate(attemptItem.created_at)}
                 </p>
               </div>
               <span
                 className={`shrink-0 text-[12.5px] font-semibold ${
-                  accuracyTone(attempt.score * 100).text
+                  accuracyTone(attemptItem.score * 100).text
                 }`}
               >
-                {attempt.correct}/{attempt.questions}
+                {attemptItem.correct}/{attemptItem.questions}
               </span>
             </li>
           ))}
@@ -321,7 +341,7 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   return (
     <div className="rounded-2xl bg-surface px-3 py-2.5 card-shadow">
       <p className="text-[11px] text-muted">{label}</p>
-      <p className={`pt-0.5 text-base font-bold ${accent ? "text-accent-strong" : "text-ink"}`}>
+      <p className={`pt-0.5 text-base font-bold ${accent ? "text-emerald-700" : "text-ink"}`}>
         {value}
       </p>
     </div>

@@ -1,5 +1,5 @@
 export function Avatar({ name, className = "" }: { name: string; className?: string }) {
-  const initial = name.trim().charAt(0) || "ব";
+  const initial = name.trim().charAt(0) || "S";
   return (
     <span
       aria-hidden

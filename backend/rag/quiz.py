@@ -14,6 +14,17 @@ from typing import Any
 
 from backend.config import QUIZ_CONTEXT_CHUNKS, QUIZ_OPTION_COUNT, QUIZ_QUESTION_COUNT
 from backend.rag import retriever
+from backend.rag.i18n import (
+    QUIZ_GENERIC_TOPIC,
+    QUIZ_HEADING,
+    QUIZ_PAGE_NOTE,
+    QUIZ_PART_LABEL,
+    QUIZ_SUBJECT_NOTE,
+    QUIZ_SYSTEM,
+    QUIZ_TASK,
+    Language,
+    normalize_language,
+)
 from backend.rag.llm import invoke_json
 
 logger = logging.getLogger(__name__)
@@ -25,28 +36,18 @@ _MAX_EXPLANATION_CHARS = 700
 
 _LETTERS = {"a": 0, "b": 1, "c": 2, "d": 3, "ক": 0, "খ": 1, "গ": 2, "ঘ": 3}
 
+_LANGUAGE_NAMES: dict[Language, str] = {"en": "English", "bn": "Bangla"}
+
 
 class QuizGenerationError(RuntimeError):
     """The model did not return a usable quiz."""
 
 
-SYSTEM_PROMPT = f"""তুমি একজন অভিজ্ঞ NCTB শিক্ষক। দেওয়া পাঠ্যবইয়ের অংশ পড়ে শিক্ষার্থীর জন্য
-বহুনির্বাচনি প্রশ্ন (MCQ) তৈরি করবে।
-
-# নিয়ম
-- প্রতিটি প্রশ্নের উত্তর অবশ্যই দেওয়া অংশে থাকতে হবে। অংশে না থাকা তথ্য নিয়ে প্রশ্ন করবে না।
-- প্রতিটি প্রশ্নে ঠিক {QUIZ_OPTION_COUNT}টি অপশন থাকবে; একটি সঠিক, তিনটি ভুল কিন্তু বিশ্বাসযোগ্য।
-- অপশনগুলো ছোট, স্পষ্ট ও পরস্পর থেকে আলাদা হবে। "ক) খ)" ধরনের নম্বর দেবে না।
-- "answer" হবে সঠিক অপশনের ০-ভিত্তিক ইনডেক্স (0, 1, 2 বা 3) — অপশনের লেখা নয়।
-- "topic" হবে ২-৪ শব্দের একটি সংক্ষিপ্ত বাংলা উপ-বিষয় (যেমন: "বৃত্তের ক্ষেত্রফল")।
-- "explanation" হবে ১-২ বাক্যের বাংলা ব্যাখ্যা, কেন উত্তরটি সঠিক।
-- প্রশ্নগুলো অধ্যায়ের বিভিন্ন অংশ থেকে নাও; একই বিষয়ে বারবার প্রশ্ন করবে না।
-- উত্তর শুধু JSON হিসেবে দাও, কোনো অতিরিক্ত লেখা নয়।
-
-# আউটপুট ফরম্যাট
-{{"questions": [{{"question": "...", "options": ["...", "...", "...", "..."],
-  "answer": 0, "topic": "...", "explanation": "..."}}]}}
-"""
+def system_prompt(language: Language) -> str:
+    return QUIZ_SYSTEM[language].format(
+        options=QUIZ_OPTION_COUNT,
+        language_name=_LANGUAGE_NAMES[language],
+    )
 
 
 def _clamp(text: Any, limit: int) -> str:
@@ -87,7 +88,7 @@ def _resolve_answer(value: Any, options: list[str]) -> int:
     raise ValueError(f"could not map answer {value!r} to any option")
 
 
-def _normalize_question(raw: Any) -> dict[str, Any]:
+def _normalize_question(raw: Any, language: Language = "en") -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError("each question must be an object")
 
@@ -106,7 +107,7 @@ def _normalize_question(raw: Any) -> dict[str, Any]:
 
     answer = _resolve_answer(raw.get("answer"), options)
 
-    topic = _clamp(raw.get("topic"), _MAX_TOPIC_CHARS) or "সাধারণ"
+    topic = _clamp(raw.get("topic"), _MAX_TOPIC_CHARS) or QUIZ_GENERIC_TOPIC[language]
     explanation = _clamp(raw.get("explanation"), _MAX_EXPLANATION_CHARS)
 
     return {
@@ -119,7 +120,7 @@ def _normalize_question(raw: Any) -> dict[str, Any]:
     }
 
 
-def _validate(payload: Any, count: int) -> list[dict[str, Any]]:
+def _validate(payload: Any, count: int, language: Language = "en") -> list[dict[str, Any]]:
     items = payload.get("questions") if isinstance(payload, dict) else payload
     if not isinstance(items, list):
         raise ValueError("expected a JSON object with a 'questions' array")
@@ -129,18 +130,18 @@ def _validate(payload: Any, count: int) -> list[dict[str, Any]]:
     questions: list[dict[str, Any]] = []
     for index, item in enumerate(items[:count]):
         try:
-            questions.append(_normalize_question(item))
+            questions.append(_normalize_question(item, language))
         except ValueError as exc:
             raise ValueError(f"question {index + 1}: {exc}") from exc
     return questions
 
 
-def build_source_material(chunks: list[dict[str, Any]]) -> str:
+def build_source_material(chunks: list[dict[str, Any]], language: Language = "en") -> str:
     blocks: list[str] = []
     for index, chunk in enumerate(chunks, start=1):
         page = chunk.get("page_start") or chunk.get("page_end")
-        page_note = f" (পৃষ্ঠা {page})" if page else ""
-        blocks.append(f"[অংশ {index}{page_note}]\n{chunk.get('text', '')}")
+        page_note = QUIZ_PAGE_NOTE[language].format(page=page) if page else ""
+        blocks.append(f"{QUIZ_PART_LABEL[language].format(index=index, page=page_note)}\n{chunk.get('text', '')}")
     return "\n\n".join(blocks)
 
 
@@ -150,27 +151,32 @@ def generate(
     *,
     count: int = QUIZ_QUESTION_COUNT,
     subject_label: str | None = None,
+    language: Language | str | None = None,
 ) -> list[dict[str, Any]]:
     """Generate `count` chapter-grounded MCQs. Raises ChapterNotIndexed if empty."""
+    lang = normalize_language(language if isinstance(language, str) else None)
     chunks = retriever.sample_chunks(book, chapter, QUIZ_CONTEXT_CHUNKS)
     if not chunks:
         raise retriever.ChapterNotIndexed(f"No chunks cached for {book} / {chapter}")
 
-    heading = f"অধ্যায়: {chapter}" + (f" | বিষয়: {subject_label}" if subject_label else "")
+    heading = QUIZ_HEADING[lang].format(chapter=chapter)
+    if subject_label:
+        heading += QUIZ_SUBJECT_NOTE[lang].format(subject=subject_label)
+
     user = (
         f"{heading}\n\n"
-        f"নিচের পাঠ্যবইয়ের অংশ থেকে ঠিক {count}টি MCQ তৈরি করো।\n\n"
-        f"{build_source_material(chunks)}"
+        f"{QUIZ_TASK[lang].format(count=count)}\n\n"
+        f"{build_source_material(chunks, lang)}"
     )
 
     questions = invoke_json(
-        SYSTEM_PROMPT,
+        system_prompt(lang),
         user,
         temperature=0.5,
         max_tokens=3000,
-        validate=lambda payload: _validate(payload, count),
+        validate=lambda payload: _validate(payload, count, lang),
     )
-    logger.info("Generated %d MCQs for %s / %s", len(questions), book, chapter)
+    logger.info("Generated %d MCQs (%s) for %s / %s", len(questions), lang, book, chapter)
     return questions
 
 

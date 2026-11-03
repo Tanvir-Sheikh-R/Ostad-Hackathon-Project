@@ -1,16 +1,18 @@
-# পাঠ সমাধান (Study-RAG)
+# পাঠ সমাধান / Path Somadhan (Study-RAG)
 
-NCTB পাঠ্যবইয়ের ওপর ভিত্তি করে একটি বাংলা স্টাডি অ্যাসিস্ট্যান্ট। শিক্ষার্থী **শ্রেণি → বিষয় →
-অধ্যায়** বেছে নেয়, তারপর তিনটি ট্যাব পায়:
+NCTB পাঠ্যবইয়ের ওপর ভিত্তি করে একটি স্টাডি অ্যাসিস্ট্যান্ট। শিক্ষার্থী **শ্রেণি → বিষয় →
+অধ্যায়** বেছে নেয়, তারপর তিনটি ট্যাব পায় (প্রতিটি ট্যাবের নিজস্ব রং):
 
 | ট্যাব | কাজ |
 |---|---|
-| **চ্যাট** | নির্বাচিত অধ্যায়ের ভেতরেই hybrid retrieval (BM25 + FAISS) করে উত্তর দেয়, NDJSON স্ট্রিমে |
-| **কুইজ** | সেই অধ্যায়ের অংশ থেকে LLM ৫টি MCQ তৈরি করে; উত্তর দেওয়ার পরে স্কোর ও ব্যাখ্যা দেখায় |
-| **প্রোগ্রেস** | অধ্যায়ভিত্তিক গড় স্কোর, দুর্বল টপিক, এবং LLM-লেখা অভিভাবক সারসংক্ষেপ |
+| **চ্যাট / Chat** | নির্বাচিত অধ্যায়ের ভেতরেই hybrid retrieval (BM25 + FAISS) করে উত্তর দেয়, NDJSON স্ট্রিমে |
+| **কুইজ / Quiz** | সেই অধ্যায়ের অংশ থেকে LLM ৫টি MCQ তৈরি করে; উত্তর দেওয়ার পরে স্কোর ও ব্যাখ্যা দেখায় |
+| **প্রোগ্রেস / Progress** | অধ্যায়ভিত্তিক গড় স্কোর, দুর্বল টপিক, এবং LLM-লেখা অভিভাবক সারসংক্ষেপ |
 
 প্রতিটি কুইজের ফল SQLite-এ সংরক্ষিত হয় (student, subject, chapter, topic, correct, date)।
 
+- **UI ভাষা:** ডিফল্ট **English**, হেডারের **EN / বাংলা** টগল দিয়ে বদলানো যায় — UI লেখা,
+  বিষয়ের নাম এবং AI-এর উত্তর/কুইজ/সারসংক্ষেপের ভাষা একসাথে বদলায় (বিস্তারিত নিচে)।
 - **ব্যাকএন্ড:** FastAPI — Docker ইমেজ হিসেবে AWS EC2-তে (`deploy/`)
 - **ফ্রন্টএন্ড:** Next.js 16 — GitHub থেকে Vercel-এ (`web/`)
 
@@ -40,14 +42,15 @@ web (Vercel, HTTPS)  ──NEXT_PUBLIC_API_BASE──▶  Caddy (TLS)  ──▶
 │   │   ├── quiz.py              # POST /api/quiz/generate | /api/quiz/submit
 │   │   ├── progress.py          # GET  /api/progress | /api/progress/summary
 │   │   ├── health.py            # GET  /api/health | POST /api/health/warmup
-│   │   └── deps.py              # client id, chapter verification (trust boundary)
+│   │   └── deps.py              # client id, language, chapter verification
 │   ├── db/                      # SQLite
 │   │   ├── database.py          # connection + schema (WAL)
 │   │   └── quiz_results.py      # sessions, results, chapter/topic statistics
 │   └── rag/
 │       ├── retriever.py         # ★ hybrid BM25 + FAISS search over one chapter
-│       ├── chapters.py          # chapters.json access + catalog
+│       ├── chapters.py          # chapters.json access + catalog (BN + EN labels)
 │       ├── embeddings.py        # e5-base loaded from a flat local directory
+│       ├── i18n.py              # EN/BN prompts + user-facing API messages
 │       ├── llm.py               # Groq → DeepSeek fallback, JSON repair
 │       ├── answer.py            # chat prompt + streaming answer
 │       ├── quiz.py              # MCQ generation + grading
@@ -56,9 +59,10 @@ web (Vercel, HTTPS)  ──NEXT_PUBLIC_API_BASE──▶  Caddy (TLS)  ──▶
 ├── web/                         # Next.js (Vercel)
 │   ├── public/banner.png        # শীর্ষ ব্যানার (নিজের ছবি এখানে রাখুন)
 │   └── src/
-│       ├── app/page.tsx         # ব্যানার + ট্যাব শেল
-│       ├── components/          # banner, tab-nav, quiz-panel, progress-panel, ...
-│       └── lib/                 # api.ts, types.ts, cache.ts
+│       ├── app/page.tsx         # হেডার + ট্যাব শেল
+│       ├── components/          # app-header, chapter-bar, tab-nav, language-toggle,
+│       │                        # user-menu, quiz-panel, progress-panel, banner, ...
+│       └── lib/                 # api.ts, types.ts, cache.ts, i18n.ts, use-language.ts
 │
 ├── deploy/                      # AWS deployment
 │   ├── Dockerfile.backend
@@ -73,6 +77,20 @@ web (Vercel, HTTPS)  ──NEXT_PUBLIC_API_BASE──▶  Caddy (TLS)  ──▶
 ├── model_cache/e5-base/         # ~1.1 GB (git-এ নেই, ইমেজে বেক করা)
 └── docker-compose.yml           # লোকাল ডেভেলপমেন্ট (শুধু API)
 ```
+
+## ভাষা (English / বাংলা)
+
+- ডিফল্ট UI ভাষা **English**; হেডারের `EN | বাংলা` টগল দিয়ে বদলানো যায়। পছন্দ
+  `localStorage`-এ থাকে (`patsomadhan.lang`) এবং `<html lang>` আপডেট হয়।
+- টগল বদলালে একসাথে বদলায়: সব UI লেবেল, বিষয়ের নাম (ক্যাটালগ BN+EN দুটোই পাঠায়),
+  চ্যাটের উত্তর, কুইজের প্রশ্ন/ব্যাখ্যা, এবং অভিভাবক সারসংক্ষেপ।
+- প্রতি রিকোয়েস্টে ভাষা যায় দুইভাবে: `X-Client-Lang` হেডার (এরর/স্ট্যাটাস মেসেজের জন্য)
+  এবং `context.language` (প্রম্পটের জন্য, থ্রেডে সংরক্ষিত থাকে)।
+- **অধ্যায়ের নাম** `chapters.json` থেকে যেমন আছে তেমনই দেখায় — ওখানে ইংরেজি নামের ফিল্ড
+  নেই, তাই ৪৩৭টি শিরোনাম অনুবাদ করা হয়নি (নকল অনুবাদ না দিয়ে সৎভাবে ডেটাই দেখানো হয়)।
+  বইয়ের নাম ইংরেজি হলে (যেমন General English) শিরোনামও ইংরেজিতেই আসে।
+- শিক্ষার্থীর নাম: ডিফল্ট `Student` / `শিক্ষার্থী`; হেডারের ইউজার আইকনে ক্লিক → পেন্সিল
+  আইকন → নাম লিখে সেভ (`localStorage`: `patsomadhan.name`)।
 
 ## লোকালি চালানো
 
@@ -108,7 +126,8 @@ npm run dev                           # http://localhost:3000
 ## পরীক্ষা
 
 ```bash
-python scripts/api_smoke_test.py                     # in-process, সব এন্ডপয়েন্ট
+python scripts/api_smoke_test.py                     # in-process, English run
+python scripts/api_smoke_test.py --lang bn           # same checks in Bangla
 python scripts/api_smoke_test.py --base-url https://api.example.com
 cd web && npm run typecheck && npm run build
 ```

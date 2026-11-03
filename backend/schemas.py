@@ -7,6 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from backend.config import QUIZ_QUESTION_COUNT
+from backend.rag.i18n import Language
 
 # Longest student name accepted anywhere; also the SQLite column's practical limit.
 _STUDENT_MAX = 64
@@ -20,7 +21,11 @@ def _clean_text(value: str, *, limit: int) -> str:
 
 
 class ChapterContext(BaseModel):
-    """The single chapter a chat, quiz or report is scoped to."""
+    """The single chapter a chat, quiz or report is scoped to.
+
+    `language` rides along with the chapter on every request: it drives the answer,
+    quiz and summary language, and the labels stored on a thread's title.
+    """
 
     class_id: str = Field(min_length=1)
     class_label: str = Field(min_length=1)
@@ -29,6 +34,7 @@ class ChapterContext(BaseModel):
     stream: str | None = None
     book: str = Field(min_length=1)
     chapter: str = Field(min_length=1)
+    language: Language = "en"
 
     @property
     def title(self) -> str:

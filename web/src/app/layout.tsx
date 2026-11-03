@@ -10,17 +10,18 @@ const bengali = Hind_Siliguri({
 });
 
 export const metadata: Metadata = {
-  title: "পাঠ সমাধান",
-  description: "NCTB পাঠ্যবই থেকে প্রশ্নোত্তর, অধ্যায়ভিত্তিক কুইজ ও অভিভাবকের জন্য অগ্রগতি রিপোর্ট",
+  title: "Path Somadhan",
+  description:
+    "Chat with your NCTB textbook, take chapter quizzes and track progress — for students and parents.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    // suppressHydrationWarning covers third-party attributes injected into <html>
-    // before hydration (dark-mode and reading extensions such as Night Eye add
-    // e.g. nighteye="disabled"), which React otherwise reports as a mismatch.
-    // It only applies to this element's own attributes, not to the tree below it.
-    <html lang="bn" className={bengali.variable} suppressHydrationWarning>
+    // lang starts at "en" (the default UI language); useLanguage updates it on the
+    // client when the student switches to Bangla. suppressHydrationWarning covers
+    // third-party attributes injected into <html> before hydration (reading/dark-mode
+    // extensions), which React would otherwise report as a mismatch.
+    <html lang="en" className={bengali.variable} suppressHydrationWarning>
       <body className="font-[family-name:var(--font-bengali)] antialiased">{children}</body>
     </html>
   );

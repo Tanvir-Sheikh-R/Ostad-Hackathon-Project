@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
-import { Banner } from "@/components/banner";
+import { AppHeader } from "@/components/app-header";
+import { ChapterBar } from "@/components/chapter-bar";
 import { ChatComposer } from "@/components/chat-composer";
 import { EmptyState } from "@/components/empty-state";
 import { MessageList } from "@/components/message-list";
@@ -10,10 +11,9 @@ import { ProgressPanel } from "@/components/progress-panel";
 import { QuizPanel } from "@/components/quiz-panel";
 import { SelectionModal, type PickerMode, type PickerResult } from "@/components/selection-modal";
 import { Sidebar } from "@/components/sidebar";
-import { TabNav, type TabKey } from "@/components/tab-nav";
+import type { TabKey } from "@/components/tab-nav";
 import { LoadingScreen, ToastStack, type Toast } from "@/components/toast";
-import { TopBar } from "@/components/top-bar";
-import { ApiError, api, streamChat } from "@/lib/api";
+import { ApiError, api, apiBaseUrl, streamChat } from "@/lib/api";
 import { CACHE_KEYS, readCache, writeCache } from "@/lib/cache";
 import type {
   CatalogResponse,
@@ -23,6 +23,7 @@ import type {
   ThreadDetail,
   ThreadGroup,
 } from "@/lib/types";
+import { useLanguage } from "@/lib/use-language";
 import { useUserName } from "@/lib/use-user-name";
 
 type ModalState = {
@@ -54,7 +55,8 @@ function toContext(detail: ThreadDetail): ChapterContext | null {
 }
 
 export default function Page() {
-  const { userName, saveUserName } = useUserName();
+  const { language, setLanguage, t, tf } = useLanguage();
+  const { userName, saveUserName } = useUserName(language);
 
   const [tab, setTab] = useState<TabKey>("chat");
   const [catalog, setCatalog] = useState<CatalogResponse | null>(null);
@@ -89,10 +91,13 @@ export default function Page() {
   const pickerShownRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  const pushToast = useCallback((tone: Toast["tone"], message: string) => {
-    const id = ++toastIdRef.current;
-    setToasts((current) => [...current, { id, tone, message }].slice(-3));
-  }, []);
+  const pushToast = useCallback(
+    (tone: Toast["tone"], message: string, durationMs?: number) => {
+      const id = ++toastIdRef.current;
+      setToasts((current) => [...current, { id, tone, message, durationMs }].slice(-3));
+    },
+    [],
+  );
 
   const dismissToast = useCallback((id: number) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
@@ -102,11 +107,11 @@ export default function Page() {
     try {
       setGroups(await api.threads());
     } catch (error) {
-      pushToast("error", error instanceof Error ? error.message : "চ্যাট তালিকা লোড হয়নি।");
+      pushToast("error", error instanceof Error ? error.message : tf("chat.listFailed"));
     } finally {
       setThreadsLoading(false);
     }
-  }, [pushToast]);
+  }, [pushToast, tf]);
 
   const bootstrap = useCallback(async () => {
     // Paint from the cached catalog first: the picker and header render immediately,
@@ -145,19 +150,17 @@ export default function Page() {
       void refreshThreads();
     } catch (error) {
       const message =
-        error instanceof ApiError
-          ? error.message
-          : "সার্ভারের সাথে সংযোগ করা যায়নি। ব্যাকএন্ড চালু আছে কি?";
+        error instanceof ApiError ? error.message : tf("error.bootDefault");
       if (cached?.classes?.length) {
         // Still usable from cache — warn instead of blocking the whole app.
-        pushToast("error", `${message} (সংরক্ষিত সূচি দেখানো হচ্ছে)`);
+        pushToast("error", tf("error.cachedNotice", { message }));
       } else {
         setBootError(message);
       }
     } finally {
       setThreadsLoading(false);
     }
-  }, [pushToast, refreshThreads]);
+  }, [pushToast, refreshThreads, tf]);
 
   useEffect(() => {
     void bootstrap();
@@ -211,6 +214,8 @@ export default function Page() {
         await startThread(picked);
       }
       setModal(null);
+      // A brand-new chat always opens on the chat tab.
+      setTab("chat");
     },
     [activeThreadId, modal?.mode, refreshThreads, startThread],
   );
@@ -231,28 +236,28 @@ export default function Page() {
         setNavOpen(false);
         setTab("chat");
       } catch (error) {
-        pushToast("error", error instanceof Error ? error.message : "চ্যাট লোড হয়নি।");
+        pushToast("error", error instanceof Error ? error.message : tf("chat.loadFailed"));
       } finally {
         setThreadsLoading(false);
       }
     },
-    [pushToast, streaming],
+    [pushToast, streaming, tf],
   );
 
   const renameThread = useCallback(
     async (threadId: string, title: string) => {
       if (streaming) {
-        pushToast("info", "উত্তর আসছে — শেষ হলে নাম বদলাতে পারবে।");
+        pushToast("info", tf("chat.busyAnswer"));
         return;
       }
       try {
         await api.renameThread(threadId, title);
         await refreshThreads();
       } catch (error) {
-        pushToast("error", error instanceof Error ? error.message : "নাম বদলানো যায়নি।");
+        pushToast("error", error instanceof Error ? error.message : tf("chat.renameFailed"));
       }
     },
-    [pushToast, refreshThreads, streaming],
+    [pushToast, refreshThreads, streaming, tf],
   );
 
   // Deleting asks in-app rather than with window.confirm(): a suppressed native
@@ -260,15 +265,15 @@ export default function Page() {
   const requestDeleteThread = useCallback(
     (threadId: string) => {
       if (streaming) {
-        pushToast("info", "উত্তর আসছে — শেষ হলে চ্যাট মুছতে পারবে।");
+        pushToast("info", tf("chat.busyAnswer"));
         return;
       }
       const found = groups
         .flatMap((group) => group.threads)
         .find((thread) => thread.thread_id === threadId);
-      setPendingDelete({ threadId, title: found?.title ?? "এই চ্যাট" });
+      setPendingDelete({ threadId, title: found?.title ?? "" });
     },
-    [groups, pushToast, streaming],
+    [groups, pushToast, streaming, tf],
   );
 
   const confirmDeleteThread = useCallback(async () => {
@@ -290,9 +295,9 @@ export default function Page() {
       }
       await refreshThreads();
     } catch (error) {
-      pushToast("error", error instanceof Error ? error.message : "চ্যাট মোছা যায়নি।");
+      pushToast("error", error instanceof Error ? error.message : tf("chat.deleteFailed"));
     }
-  }, [activeThreadId, pendingDelete, pushToast, refreshThreads]);
+  }, [activeThreadId, pendingDelete, pushToast, refreshThreads, tf]);
 
   const send = useCallback(async () => {
     const question = input.trim();
@@ -300,7 +305,7 @@ export default function Page() {
       return;
     }
     if (!context) {
-      pushToast("error", "আগে শ্রেণি, বিষয় ও অধ্যায় বেছে নাও।");
+      pushToast("error", tf("chat.needChapter"));
       return;
     }
 
@@ -316,14 +321,14 @@ export default function Page() {
         threadId = created.thread_id;
         setActiveThreadId(threadId);
       } catch (error) {
-        pushToast("error", error instanceof Error ? error.message : "নতুন চ্যাট শুরু করা যায়নি।");
+        pushToast("error", error instanceof Error ? error.message : tf("chat.newThreadFailed"));
         return;
       }
     }
 
     setInput("");
     setStreamingText("");
-    setStatusLabel("পাঠ্যবই খোঁজা হচ্ছে...");
+    setStatusLabel(null);
     setStreaming(true);
     setMessages((current) => [...current, { role: "user", content: question }]);
 
@@ -351,9 +356,9 @@ export default function Page() {
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
-        answer = answer || "⏹ থামানো হয়েছে।";
+        answer = answer || tf("chat.stopped");
       } else {
-        failed = error instanceof Error ? error.message : "উত্তর আনতে সমস্যা হয়েছে।";
+        failed = error instanceof Error ? error.message : tf("chat.answerFailed");
       }
     } finally {
       abortRef.current = null;
@@ -372,35 +377,28 @@ export default function Page() {
       setStreamingText("");
       void refreshThreads();
     }
-  }, [activeThreadId, context, input, pushToast, refreshThreads, streaming]);
+  }, [activeThreadId, context, input, pushToast, refreshThreads, streaming, tf]);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
   }, []);
 
-  const renameUser = useCallback(() => {
-    const next = window.prompt("তোমার নাম কী?", userName);
-    if (next !== null) {
-      saveUserName(next);
-    }
-  }, [saveUserName, userName]);
-
   const openPicker = useCallback(
     (mode: PickerMode) => {
       if (streaming) {
-        pushToast("info", "উত্তর আসছে — শেষ হলে অধ্যায় বদলাতে পারবে।");
+        pushToast("info", tf("chat.busyAnswer"));
         return;
       }
       setModal({ mode, initial: mode === "new" ? null : context });
     },
-    [context, pushToast, streaming],
+    [context, pushToast, streaming, tf],
   );
 
   // Home: back to the greeting for the current chapter. The next question starts a
   // fresh thread, so no empty thread is created just by landing here.
   const goHome = useCallback(() => {
     if (streaming) {
-      pushToast("info", "উত্তর আসছে — শেষ হলে হোমে যেতে পারবে।");
+      pushToast("info", tf("chat.busyAnswer"));
       return;
     }
     setTab("chat");
@@ -412,18 +410,19 @@ export default function Page() {
     setMessages([]);
     setStreamingText("");
     setStatusLabel(null);
-  }, [context, openPicker, pushToast, streaming]);
+  }, [context, openPicker, pushToast, streaming, tf]);
 
   if (bootError && !ready) {
     return (
       <main className="grid min-h-dvh place-items-center p-6">
         <div className="max-w-md rounded-3xl bg-surface p-6 text-center card-shadow">
-          <h1 className="text-lg font-bold text-ink">সার্ভারে সংযোগ করা যায়নি</h1>
+          <h1 className="text-lg font-bold text-ink">{t("error.bootTitle")}</h1>
           <p className="pt-2 text-sm leading-relaxed text-neutral-600">{bootError}</p>
-          <p className="pt-2 text-xs leading-relaxed text-muted">
-            লোকালি চালাতে: <code>python -m backend.run</code>. Vercel-এ deploy করলে{" "}
-            <code>NEXT_PUBLIC_API_BASE</code> সেট করতে হবে।
+          <p className="mt-3 rounded-xl bg-neutral-50 px-3 py-2 text-left text-[12px] leading-relaxed text-neutral-600">
+            {t("error.backendBase")}
+            <code className="break-all">{apiBaseUrl()}</code>
           </p>
+          <p className="pt-2 text-xs leading-relaxed text-muted">{t("error.bootHelp")}</p>
           <button
             type="button"
             onClick={() => {
@@ -432,7 +431,7 @@ export default function Page() {
             }}
             className="mt-5 rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-800"
           >
-            আবার চেষ্টা করো
+            {t("error.retry")}
           </button>
         </div>
       </main>
@@ -440,7 +439,7 @@ export default function Page() {
   }
 
   if (!ready || !catalog) {
-    return <LoadingScreen label="পাঠ্যবই প্রস্তুত হচ্ছে..." />;
+    return <LoadingScreen label={t("error.loadingBoot")} />;
   }
 
   const contextLabel = context
@@ -450,9 +449,7 @@ export default function Page() {
     ? catalog.classes.flatMap((item) => item.subjects).find((item) => item.book === context.book)
     : undefined;
   const bookHint =
-    currentSubject && !currentSubject.indexed
-      ? "এই বইটির সূচি (embedding) এখনো তৈরি হয়নি — প্রশ্ন করলে পুরো বই খোঁজার চেষ্টা করা হবে।"
-      : null;
+    currentSubject && !currentSubject.indexed ? t("picker.notIndexed") : null;
 
   const composer = (
     <ChatComposer
@@ -463,20 +460,25 @@ export default function Page() {
       onChange={setInput}
       onSend={() => void send()}
       onStop={stop}
+      t={t}
     />
   );
 
   return (
-    <main className="flex h-dvh flex-col gap-3 p-3 sm:p-4">
-      <Banner
-        subtitle={
-          context
-            ? `${context.class_label} · ${context.subject_label} · ${context.chapter}`
-            : "NCTB পাঠ্যবই থেকে প্রশ্নোত্তর, অধ্যায়ভিত্তিক কুইজ ও অভিভাবকের জন্য অগ্রগতি রিপোর্ট"
-        }
+    <main className="flex h-dvh flex-col gap-2.5 p-2.5 sm:gap-3 sm:p-4">
+      <AppHeader
+        tab={tab}
+        onTabChange={setTab}
+        language={language}
+        onLanguageChange={setLanguage}
+        userName={userName}
+        onSaveName={saveUserName}
+        onToggleNav={() => setNavOpen((open) => !open)}
+        bannerSubtitle={contextLabel ?? t("app.description")}
+        t={t}
       />
 
-      <div className="flex min-h-0 flex-1 gap-3 sm:gap-4">
+      <div className="flex min-h-0 flex-1 gap-2.5 sm:gap-3">
         <div
           className={`${navOpen ? "flex" : "hidden"} absolute inset-y-0 left-0 z-30 h-full lg:static lg:flex`}
         >
@@ -494,7 +496,7 @@ export default function Page() {
               onHome={goHome}
               onRenameThread={(threadId, title) => void renameThread(threadId, title)}
               onDeleteThread={requestDeleteThread}
-              onRenameUser={renameUser}
+              t={t}
             />
           </div>
         </div>
@@ -502,29 +504,30 @@ export default function Page() {
         {navOpen ? (
           <button
             type="button"
-            aria-label="সাইডবার বন্ধ করো"
+            aria-label={t("picker.close")}
             onClick={() => setNavOpen(false)}
             className="fixed inset-0 z-20 bg-neutral-900/20 lg:hidden"
           />
         ) : null}
 
         <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-3xl bg-surface app-shadow">
-          <TopBar
-            userName={userName}
+          <ChapterBar
             context={context}
             onOpenPicker={() => openPicker("switch")}
             onNewChat={() => openPicker("new")}
-            onToggleNav={() => setNavOpen((open) => !open)}
+            disabled={streaming}
+            t={t}
           />
-
-          <div className="px-3 pt-1 pb-2 sm:px-4">
-            <TabNav active={tab} onChange={setTab} />
-          </div>
 
           <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             {tab === "chat" ? (
               messages.length === 0 ? (
-                <EmptyState userName={userName} contextLabel={contextLabel} hint={bookHint}>
+                <EmptyState
+                  userName={userName}
+                  contextLabel={contextLabel}
+                  hint={bookHint}
+                  t={t}
+                >
                   {composer}
                 </EmptyState>
               ) : (
@@ -542,6 +545,7 @@ export default function Page() {
                 onToast={pushToast}
                 onSaved={() => setProgressKey((key) => key + 1)}
                 onGoProgress={() => setTab("progress")}
+                t={t}
               />
             ) : (
               <ProgressPanel
@@ -549,6 +553,7 @@ export default function Page() {
                 refreshKey={progressKey}
                 onGoQuiz={() => setTab("quiz")}
                 onToast={pushToast}
+                t={t}
               />
             )}
           </div>
@@ -564,8 +569,10 @@ export default function Page() {
           classes={catalog.classes}
           initialContext={modal.initial}
           mode={modal.mode}
+          language={language}
           onCancel={() => setModal(null)}
           onSubmit={handlePickerSubmit}
+          t={t}
         />
       ) : null}
 
@@ -574,7 +581,7 @@ export default function Page() {
           <div
             role="alertdialog"
             aria-modal="true"
-            aria-label="চ্যাট মুছে ফেলার নিশ্চিতকরণ"
+            aria-label={t("chat.deleteTitle")}
             className="bb-slide-up w-full max-w-sm rounded-3xl bg-surface p-6 card-shadow"
           >
             <div className="flex items-start gap-3">
@@ -582,10 +589,10 @@ export default function Page() {
                 <Trash2 className="size-4" />
               </span>
               <div className="min-w-0">
-                <h2 className="text-base font-bold text-ink">চ্যাটটি মুছে ফেলবেন?</h2>
+                <h2 className="text-base font-bold text-ink">{t("chat.deleteTitle")}</h2>
                 <p className="truncate pt-1 text-[13px] text-neutral-600">{pendingDelete.title}</p>
                 <p className="pt-2 text-[12px] leading-relaxed text-muted">
-                  এটি স্থায়ীভাবে মুছে যাবে এবং ফিরিয়ে আনা যাবে না।
+                  {t("chat.deleteBody")}
                 </p>
               </div>
             </div>
@@ -595,21 +602,21 @@ export default function Page() {
                 onClick={() => setPendingDelete(null)}
                 className="rounded-full px-4 py-2 text-[13px] font-medium text-neutral-600 transition hover:bg-neutral-100"
               >
-                বাতিল
+                {t("chat.cancel")}
               </button>
               <button
                 type="button"
                 onClick={() => void confirmDeleteThread()}
                 className="rounded-full bg-rose-600 px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-rose-700"
               >
-                মুছে ফেলো
+                {t("chat.deleteConfirm")}
               </button>
             </div>
           </div>
         </div>
       ) : null}
 
-      <ToastStack toasts={toasts} onDismiss={dismissToast} />
+      <ToastStack toasts={toasts} onDismiss={dismissToast} t={t} />
 
       {/* Contact the developer. Pinned to the window's bottom-right corner; kept
           small and flush to the edge so it clears the composer's send button.
@@ -618,8 +625,8 @@ export default function Page() {
         href="https://www.linkedin.com/in/tanvir-sheikh-r/"
         target="_blank"
         rel="noreferrer"
-        title="ডেভেলপারের LinkedIn প্রোফাইল"
-        aria-label="ডেভেলপারের LinkedIn প্রোফাইল"
+        title="LinkedIn"
+        aria-label="LinkedIn"
         className="fixed right-1 bottom-1 z-40 grid size-14 place-items-center rounded-full border border-neutral-200 bg-white text-muted shadow-lg transition hover:border-accent/50 hover:text-accent-strong"
       >
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" className="size-6">

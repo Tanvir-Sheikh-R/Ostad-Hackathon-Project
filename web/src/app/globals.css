@@ -85,3 +85,43 @@
 .bb-fade-in {
   animation: bb-fade-in 0.18s ease-out both;
 }
+
+/* --- home-screen AI logo: float + glow -------------------------------------------
+   Pure CSS, so a browser that cannot animate simply shows the static logo. Anyone
+   who asks for reduced motion gets the static logo too. */
+@keyframes bb-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+@keyframes bb-glow {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.08);
+  }
+}
+
+.bb-float {
+  animation: bb-float 4.5s ease-in-out infinite;
+}
+
+.bb-glow {
+  animation: bb-glow 3.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bb-float,
+  .bb-glow {
+    animation: none;
+  }
+}

@@ -1,5 +1,7 @@
 /** Wire types shared with the FastAPI backend. */
 
+import type { Language } from "@/lib/i18n";
+
 export type SubChapter = {
   name: string;
   number: number | string | null;
@@ -23,7 +25,10 @@ export type Chapter = {
 export type Subject = {
   subject: string;
   stream: string | null;
+  /** Bangla label. */
   label: string;
+  /** English label; the UI picks by language and falls back to `label`. */
+  label_en?: string;
   book: string;
   indexed: boolean;
   chapters: Chapter[];
@@ -32,6 +37,8 @@ export type Subject = {
 export type ClassNode = {
   class_id: string;
   label: string;
+  /** English label; optional so an older cached catalog still renders. */
+  label_en?: string;
   nested: boolean;
   subjects: Subject[];
 };
@@ -61,6 +68,8 @@ export type ChapterContext = {
   stream: string | null;
   book: string;
   chapter: string;
+  /** Answer/quiz/report language; injected by the API client when omitted. */
+  language?: Language;
 };
 
 export type ChatMessage = {

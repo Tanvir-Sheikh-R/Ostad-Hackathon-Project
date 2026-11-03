@@ -1,39 +1,42 @@
 "use client";
 
 import { GradientOrb } from "@/components/gradient-orb";
+import type { TFunction } from "@/lib/i18n";
 
 export function EmptyState({
   userName,
   contextLabel,
   hint,
+  t,
   children,
 }: {
   userName: string;
   contextLabel: string | null;
   hint: string | null;
+  t: TFunction;
   children: React.ReactNode;
 }) {
   const hour = new Date().getHours();
-  const greeting =
+  const greetingKey =
     hour < 6
-      ? "শুভ রাত্রি"
+      ? "chat.greetingNight"
       : hour < 12
-        ? "শুভ সকাল"
+        ? "chat.greetingMorning"
         : hour < 16
-          ? "শুভ দুপুর"
+          ? "chat.greetingAfternoon"
           : hour < 19
-            ? "শুভ বিকেল"
-            : "শুভ সন্ধ্যা";
+            ? "chat.greetingEvening"
+            : "chat.greetingNight";
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center px-4 py-10">
       <GradientOrb />
 
       <h1 className="pt-6 text-center text-2xl leading-snug font-bold text-ink sm:text-[29px]">
-        {greeting}, {userName}
+        {t("chat.greeting", { greeting: t(greetingKey), name: userName })}
       </h1>
       <p className="pt-1 text-center text-2xl leading-snug font-bold sm:text-[29px]">
-        <span className="text-accent">আজ কী নিয়ে পড়বে?</span>
+        <span className="text-accent">{t("chat.askLine")}</span>
       </p>
 
       {contextLabel ? (

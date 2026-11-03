@@ -1,34 +1,8 @@
 "use client";
 
-import {
-  ArrowUp,
-  ListChecks,
-  Loader2,
-  Paperclip,
-  ScrollText,
-  Sparkle,
-  Square,
-  Sparkles,
-} from "lucide-react";
+import { ArrowUp, ListChecks, Loader2, ScrollText, Sparkle, Sparkles, Square } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-
-const QUICK_ACTIONS: { label: string; prompt: string; icon: LucideIcon }[] = [
-  {
-    label: "সারাংশ দাও",
-    prompt: "এই অধ্যায়ের মূল বিষয়গুলো সংক্ষেপে সারাংশ আকারে বলে দাও।",
-    icon: ScrollText,
-  },
-  {
-    label: "কুইজ বানাও",
-    prompt: "এই অধ্যায় থেকে ৫টি সংক্ষিপ্ত প্রশ্ন বানাও এবং শেষে উত্তরগুলো দাও।",
-    icon: ListChecks,
-  },
-  {
-    label: "বিস্তারিত ব্যাখ্যা",
-    prompt: "এই অধ্যায়ের সবচেয়ে গুরুত্বপূর্ণ বিষয়টি সহজ ভাষায় বিস্তারিত বুঝিয়ে দাও।",
-    icon: Sparkle,
-  },
-];
+import type { TFunction } from "@/lib/i18n";
 
 export function ChatComposer({
   value,
@@ -38,6 +12,7 @@ export function ChatComposer({
   onChange,
   onSend,
   onStop,
+  t,
 }: {
   value: string;
   busy: boolean;
@@ -46,8 +21,27 @@ export function ChatComposer({
   onChange: (value: string) => void;
   onSend: () => void;
   onStop: () => void;
+  t: TFunction;
 }) {
   const disabled = value.trim().length === 0 || busy;
+
+  const quickActions: { label: string; prompt: string; icon: LucideIcon }[] = [
+    {
+      label: t("chat.quick.summary"),
+      prompt: t("chat.quick.summaryPrompt"),
+      icon: ScrollText,
+    },
+    {
+      label: t("chat.quick.quiz"),
+      prompt: t("chat.quick.quizPrompt"),
+      icon: ListChecks,
+    },
+    {
+      label: t("chat.quick.explain"),
+      prompt: t("chat.quick.explainPrompt"),
+      icon: Sparkle,
+    },
+  ];
 
   return (
     <div className="rounded-3xl bg-surface p-4 card-shadow">
@@ -65,29 +59,14 @@ export function ChatComposer({
             }
           }}
           rows={2}
-          placeholder="প্রশ্ন লিখুন বা কমান্ড দিন..."
-          aria-label="প্রশ্ন লিখুন"
+          placeholder={t("chat.placeholder")}
+          aria-label={t("chat.questionAria")}
           className="max-h-40 min-h-[52px] flex-1 resize-none bg-transparent text-sm leading-relaxed text-ink outline-none placeholder:text-muted"
         />
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        {/* Attachments are not implemented yet, so this is rendered visibly disabled.
-            The title sits on the wrapper: a disabled button swallows pointer events,
-            which would hide its own tooltip. */}
-        <span title="ফাইল সংযুক্তি এখনো যোগ করা হয়নি" className="inline-flex">
-          <button
-            type="button"
-            disabled
-            aria-disabled="true"
-            aria-label="ফাইল সংযুক্তি (এখনো যোগ করা হয়নি)"
-            className="grid size-7 shrink-0 cursor-not-allowed place-items-center rounded-full bg-neutral-100/70 text-neutral-300 opacity-50"
-          >
-            <Paperclip className="size-3.5" />
-          </button>
-        </span>
-
-        {QUICK_ACTIONS.map((action) => {
+        {quickActions.map((action) => {
           const Icon = action.icon;
           return (
             <button
@@ -108,7 +87,8 @@ export function ChatComposer({
             <button
               type="button"
               onClick={onStop}
-              title="থামাও"
+              title={t("chat.stop")}
+              aria-label={t("chat.stop")}
               className="grid size-9 place-items-center rounded-full bg-accent text-white transition hover:bg-accent-strong"
             >
               <Square className="size-3.5" />
@@ -118,7 +98,8 @@ export function ChatComposer({
               type="button"
               onClick={onSend}
               disabled={disabled}
-              title="পাঠাও"
+              title={t("chat.send")}
+              aria-label={t("chat.send")}
               className="grid size-9 place-items-center rounded-full bg-accent text-white transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-muted"
             >
               {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}

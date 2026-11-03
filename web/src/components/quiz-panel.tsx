@@ -12,9 +12,12 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import type { TFunction } from "@/lib/i18n";
 import type { ChapterContext, Quiz, QuizGrade } from "@/lib/types";
 
 const QUESTION_COUNT = 5;
+/** The "Result saved" confirmation hides itself after two seconds. */
+const SAVED_TOAST_MS = 2000;
 
 export function QuizPanel({
   context,
@@ -23,14 +26,16 @@ export function QuizPanel({
   onToast,
   onSaved,
   onGoProgress,
+  t,
 }: {
   context: ChapterContext | null;
   student: string;
   onOpenPicker: () => void;
-  onToast: (tone: "error" | "info", message: string) => void;
+  onToast: (tone: "error" | "info", message: string, durationMs?: number) => void;
   /** Called after a graded attempt is stored, so the progress tab can refresh. */
   onSaved: () => void;
   onGoProgress: () => void;
+  t: TFunction;
 }) {
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [answers, setAnswers] = useState<(number | null)[]>([]);
@@ -61,14 +66,13 @@ export function QuizPanel({
       setQuiz(created);
       setAnswers(Array.from({ length: created.questions.length }, () => null));
     } catch (failure) {
-      const message =
-        failure instanceof ApiError ? failure.message : "প্রশ্ন তৈরি করা যায়নি, আবার চেষ্টা করুন।";
+      const message = failure instanceof ApiError ? failure.message : t("quiz.generateFailed");
       setError(message);
       onToast("error", message);
     } finally {
       setGenerating(false);
     }
-  }, [context, generating, onToast, student]);
+  }, [context, generating, onToast, student, t]);
 
   const choose = useCallback((questionIndex: number, optionIndex: number) => {
     setAnswers((current) => {
@@ -92,23 +96,22 @@ export function QuizPanel({
       const graded = await api.submitQuiz(quiz.quiz_id, student, answers);
       setGrade(graded);
       onSaved();
-      onToast("info", `ফল সংরক্ষিত হয়েছে — ${graded.correct}/${graded.total} সঠিক।`);
+      onToast("info", t("quiz.saved"), SAVED_TOAST_MS);
     } catch (failure) {
-      const message =
-        failure instanceof ApiError ? failure.message : "ফল যাচাই করা যায়নি, আবার চেষ্টা করুন।";
+      const message = failure instanceof ApiError ? failure.message : t("quiz.submitFailed");
       setError(message);
       onToast("error", message);
     } finally {
       setSubmitting(false);
     }
-  }, [allAnswered, answers, onSaved, onToast, quiz, student, submitting]);
+  }, [allAnswered, answers, onSaved, onToast, quiz, student, submitting, t]);
 
   if (!context) {
     return (
       <Notice
-        title="আগে একটি অধ্যায় বেছে নাও"
-        body="কুইজ হবে ঠিক সেই অধ্যায় থেকেই — শ্রেণি, বিষয় ও অধ্যায় নির্বাচন করো।"
-        action={{ label: "অধ্যায় বেছে নাও", onClick: onOpenPicker }}
+        title={t("quiz.needChapterTitle")}
+        body={t("quiz.needChapterBody")}
+        action={{ label: t("quiz.needChapterAction"), onClick: onOpenPicker }}
       />
     );
   }
@@ -130,8 +133,12 @@ export function QuizPanel({
             disabled={generating}
             className="flex items-center gap-1.5 rounded-full bg-ink px-4 py-2 text-[13.5px] font-medium text-white transition hover:bg-neutral-800 disabled:bg-neutral-300"
           >
-            {generating ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-            নতুন কুইজ
+            {generating ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="size-3.5" />
+            )}
+            {t("quiz.newQuiz")}
           </button>
         ) : null}
       </header>
@@ -144,22 +151,32 @@ export function QuizPanel({
       ) : null}
 
       {grade ? (
-        <ResultView grade={grade} onRetry={() => void generate()} onGoProgress={onGoProgress} generating={generating} />
+        <ResultView
+          grade={grade}
+          onRetry={() => void generate()}
+          onGoProgress={onGoProgress}
+          generating={generating}
+          t={t}
+        />
       ) : quiz ? (
         <div className="mt-4 space-y-3">
           <p className="text-[12px] text-muted">
-            {quiz.questions.length}টি প্রশ্ন · উত্তর দেওয়া হয়েছে {answered}/{quiz.questions.length} · সঠিক
-            উত্তর ও ব্যাখ্যা জমা দেওয়ার পরে দেখা যাবে
+            {t("quiz.hint", {
+              count: quiz.questions.length,
+              answered,
+            })}
           </p>
 
           {quiz.questions.map((question, questionIndex) => (
             <article key={question.id} className="rounded-2xl bg-surface p-4 card-shadow">
               <div className="flex items-start gap-2">
-                <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-accent-soft text-[12px] font-semibold text-accent-strong">
+                <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-amber-100 text-[12px] font-semibold text-amber-800">
                   {questionIndex + 1}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[14px] leading-relaxed font-medium text-ink">{question.question}</p>
+                  <p className="text-[14px] leading-relaxed font-medium text-ink">
+                    {question.question}
+                  </p>
                   <span className="mt-1 inline-block rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-600">
                     {question.topic}
                   </span>
@@ -176,18 +193,18 @@ export function QuizPanel({
                       onClick={() => choose(questionIndex, optionIndex)}
                       className={`flex w-full items-center gap-2.5 rounded-xl border px-3 py-2 text-left text-[13.5px] transition ${
                         selected
-                          ? "border-accent bg-accent-soft text-accent-strong"
-                          : "border-neutral-200 bg-white text-neutral-700 hover:border-accent/40 hover:bg-neutral-50"
+                          ? "border-amber-500 bg-amber-50 text-amber-900"
+                          : "border-neutral-200 bg-white text-neutral-700 hover:border-amber-400/60 hover:bg-neutral-50"
                       }`}
                     >
                       <span
                         className={`grid size-5 shrink-0 place-items-center rounded-full border text-[11px] font-semibold ${
                           selected
-                            ? "border-accent bg-accent text-white"
+                            ? "border-amber-500 bg-amber-500 text-white"
                             : "border-neutral-300 text-neutral-500"
                         }`}
                       >
-                        {String.fromCharCode(2453 + optionIndex)}
+                        {String.fromCharCode(65 + optionIndex)}
                       </span>
                       <span className="min-w-0 flex-1">{option}</span>
                     </button>
@@ -199,40 +216,49 @@ export function QuizPanel({
 
           <div className="sticky bottom-0 -mx-4 flex items-center justify-between gap-3 bg-canvas/90 px-4 py-3 backdrop-blur">
             <p className="text-[12px] text-muted">
-              {allAnswered ? "সব প্রশ্নের উত্তর দেওয়া হয়েছে" : `আরও ${quiz.questions.length - answered}টি বাকি`}
+              {allAnswered
+                ? t("quiz.allAnswered")
+                : t("quiz.remaining", { count: quiz.questions.length - answered })}
             </p>
             <button
               type="button"
               onClick={() => void submit()}
               disabled={!allAnswered || submitting}
-              className="flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-[13.5px] font-semibold text-white transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:bg-neutral-300"
+              className="flex items-center gap-2 rounded-full bg-amber-500 px-5 py-2.5 text-[13.5px] font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-neutral-300"
             >
-              {submitting ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-              জমা দিয়ে ফল দেখো
+              {submitting ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="size-4" />
+              )}
+              {t("quiz.submit")}
             </button>
           </div>
         </div>
       ) : (
         <div className="mt-4 rounded-2xl bg-surface p-6 text-center card-shadow">
-          <span className="mx-auto grid size-11 place-items-center rounded-2xl bg-accent-soft text-accent">
+          <span className="mx-auto grid size-11 place-items-center rounded-2xl bg-amber-100 text-amber-700">
             <Sparkles className="size-5" />
           </span>
-          <h3 className="pt-3 text-base font-bold text-ink">৫টি প্রশ্নের কুইজ তৈরি করো</h3>
+          <h3 className="pt-3 text-base font-bold text-ink">{t("quiz.startTitle")}</h3>
           <p className="mx-auto max-w-md pt-1 text-[13px] leading-relaxed text-neutral-600">
-            প্রশ্নগুলো হবে ঠিক এই অধ্যায়ের পাঠ্যবইয়ের অংশ থেকে। উত্তর দেওয়ার পরে স্কোর, প্রতিটি উত্তর
-            ও ব্যাখ্যা দেখতে পাবে — ফলাফল সংরক্ষিত হবে।
+            {t("quiz.startBody")}
           </p>
           <button
             type="button"
             onClick={() => void generate()}
             disabled={generating}
-            className="mt-5 inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-[13.5px] font-semibold text-white transition hover:bg-accent-strong disabled:bg-neutral-300"
+            className="mt-5 inline-flex items-center gap-2 rounded-full bg-amber-500 px-5 py-2.5 text-[13.5px] font-semibold text-white transition hover:bg-amber-600 disabled:bg-neutral-300"
           >
-            {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-            {generating ? "প্রশ্ন তৈরি হচ্ছে..." : "কুইজ শুরু করো"}
+            {generating ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Sparkles className="size-4" />
+            )}
+            {generating ? t("quiz.generating") : t("quiz.startButton")}
           </button>
           {generating ? (
-            <p className="pt-3 text-[12px] text-muted">অধ্যায় পড়ে প্রশ্ন তৈরি হচ্ছে — ১০-২০ সেকেন্ড লাগতে পারে।</p>
+            <p className="pt-3 text-[12px] text-muted">{t("quiz.generatingHint")}</p>
           ) : null}
         </div>
       )}
@@ -245,30 +271,36 @@ function ResultView({
   onRetry,
   onGoProgress,
   generating,
+  t,
 }: {
   grade: QuizGrade;
   onRetry: () => void;
   onGoProgress: () => void;
   generating: boolean;
+  t: TFunction;
 }) {
   const percent = Math.round(grade.score * 100);
   const tone =
-    percent >= 80 ? "সুখবর!" : percent >= 50 ? "ভালো চেষ্টা!" : "আরেকবার চেষ্টা করো";
+    percent >= 80 ? t("quiz.toneGreat") : percent >= 50 ? t("quiz.toneOk") : t("quiz.toneLow");
 
   return (
     <div className="mt-4 space-y-3">
       <div className="rounded-2xl bg-surface p-5 card-shadow">
         <div className="flex flex-wrap items-center gap-4">
-          <div className="grid size-20 shrink-0 place-items-center rounded-full bg-accent-soft">
-            <span className="text-xl font-bold text-accent-strong">{percent}%</span>
+          <div className="grid size-20 shrink-0 place-items-center rounded-full bg-amber-100">
+            <span className="text-xl font-bold text-amber-800">{percent}%</span>
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-medium text-accent-strong">{tone}</p>
+            <p className="text-[13px] font-medium text-amber-700">{tone}</p>
             <h3 className="text-base font-bold text-ink">
-              {grade.correct}/{grade.total} সঠিক · {grade.chapter}
+              {t("quiz.scoreLine", {
+                correct: grade.correct,
+                total: grade.total,
+                chapter: grade.chapter,
+              })}
             </h3>
             <p className="pt-1 text-[12px] text-muted">
-              ফলাফল সংরক্ষিত হয়েছে ({grade.saved_rows}টি উত্তর) — প্রোগ্রেস ট্যাবে অগ্রগতি দেখো।
+              {t("quiz.savedRows", { rows: grade.saved_rows })}
             </p>
           </div>
           <div className="flex w-full gap-2 sm:w-auto">
@@ -278,15 +310,19 @@ function ResultView({
               disabled={generating}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-neutral-100 px-4 py-2 text-[13px] font-medium text-ink transition hover:bg-neutral-200 disabled:opacity-60"
             >
-              {generating ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-              আরেকটি কুইজ
+              {generating ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="size-3.5" />
+              )}
+              {t("quiz.another")}
             </button>
             <button
               type="button"
               onClick={onGoProgress}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-ink px-4 py-2 text-[13px] font-medium text-white transition hover:bg-neutral-800"
             >
-              প্রোগ্রেস
+              {t("quiz.progress")}
               <ArrowRight className="size-3.5" />
             </button>
           </div>
@@ -328,24 +364,30 @@ function ResultView({
                         : "border-neutral-200 bg-white text-neutral-600"
                   }`}
                 >
-                  <span className="shrink-0 font-semibold">{String.fromCharCode(2453 + optionIndex)}</span>
+                  <span className="shrink-0 font-semibold">
+                    {String.fromCharCode(65 + optionIndex)}
+                  </span>
                   <span className="min-w-0 flex-1">{option}</span>
                   {isAnswer ? (
-                    <span className="shrink-0 text-[11px] font-semibold text-emerald-700">সঠিক</span>
+                    <span className="shrink-0 text-[11px] font-semibold text-emerald-700">
+                      {t("quiz.correctTag")}
+                    </span>
                   ) : isChosen ? (
-                    <span className="shrink-0 text-[11px] font-semibold text-rose-700">তোমার উত্তর</span>
+                    <span className="shrink-0 text-[11px] font-semibold text-rose-700">
+                      {t("quiz.yourAnswer")}
+                    </span>
                   ) : null}
                 </div>
               );
             })}
             {item.chosen === null ? (
-              <p className="text-[11px] text-muted">এই প্রশ্নের উত্তর দেওয়া হয়নি।</p>
+              <p className="text-[11px] text-muted">{t("quiz.notAnswered")}</p>
             ) : null}
           </div>
 
           {item.explanation ? (
             <p className="mt-3 rounded-xl bg-neutral-50 px-3 py-2 text-[12.5px] leading-relaxed text-neutral-700">
-              <span className="font-semibold text-ink">ব্যাখ্যা: </span>
+              <span className="font-semibold text-ink">{t("quiz.explanation")}</span>
               {item.explanation}
             </p>
           ) : null}
@@ -366,7 +408,7 @@ function Notice({
 }) {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col items-center px-4 py-16 text-center">
-      <span className="grid size-12 place-items-center rounded-2xl bg-accent-soft text-accent">
+      <span className="grid size-12 place-items-center rounded-2xl bg-amber-100 text-amber-700">
         <BookOpen className="size-5" />
       </span>
       <h2 className="pt-4 text-base font-bold text-ink">{title}</h2>

@@ -34,11 +34,28 @@ CLASS_LABELS = {
     "class_9_10": "৯ম-১০ম শ্রেণি",
 }
 
+# English labels ride alongside the Bangla ones (not instead of them): the catalog ships
+# both and the client picks by its selected language.
+CLASS_LABELS_EN = {
+    "class_5": "Class 5",
+    "class_6": "Class 6",
+    "class_7": "Class 7",
+    "class_8": "Class 8",
+    "class_9_10": "Class 9-10 (SSC)",
+}
+
 STREAM_LABELS = {
     "general": "সাধারণ",
     "arts": "মানবিক",
     "commerce": "ব্যবসায় শিক্ষা",
     "science": "বিজ্ঞান",
+}
+
+STREAM_LABELS_EN = {
+    "general": "General",
+    "arts": "Arts",
+    "commerce": "Commerce",
+    "science": "Science",
 }
 
 SUBJECT_LABELS = {
@@ -86,6 +103,53 @@ SUBJECT_LABELS = {
     "arts_crafts": "চারু ও কারুকলা",
     "art_craft": "চারু ও কারুকলা",
     "songskrito": "সংস্কৃত",
+}
+
+SUBJECT_LABELS_EN = {
+    "bangla": "Bangla",
+    "bangla_bekoron": "Bangla Grammar",
+    "bangla_bakoron": "Bangla Grammar",
+    "bangla_grammar": "Bangla Grammar",
+    "bangla_sahitto": "Bangla Literature",
+    "bangla_sohopath": "Bangla Supplementary",
+    "charupath": "Charupath",
+    "anandopah": "Anandapath",
+    "anandapatha": "Anandapath",
+    "anondopath": "Anandapath",
+    "sahitto_konika": "Sahitya Konika",
+    "english": "English",
+    "english_grammar": "English Grammar",
+    "english_gerammar": "English Grammar",
+    "mathematics": "Mathematics",
+    "math": "Mathematics",
+    "higher_math": "Higher Mathematics",
+    "science": "Science",
+    "physics": "Physics",
+    "chemistry": "Chemistry",
+    "biology": "Biology",
+    "bgs": "Bangladesh & Global Studies",
+    "history": "History",
+    "bhugol": "Geography",
+    "civics": "Civics & Citizenship",
+    "economics": "Economics",
+    "accounting": "Accounting",
+    "business_entrepreneurship": "Business Entrepreneurship",
+    "finance_banking": "Finance & Banking",
+    "agriculture": "Agriculture Studies",
+    "krishi": "Agriculture Studies",
+    "home_science": "Home Science",
+    "ict": "ICT",
+    "career": "Career Education",
+    "kormo_o_jibon": "Work & Life-Oriented Education",
+    "kormo_o_jibonmukhi_sikkha": "Work & Life-Oriented Education",
+    "physical_education": "Physical Education",
+    "sharirik_sikha": "Physical Education",
+    "songit": "Music",
+    "songeet": "Music",
+    "songgit": "Music",
+    "arts_crafts": "Arts & Crafts",
+    "art_craft": "Arts & Crafts",
+    "songskrito": "Sanskrit",
 }
 
 _UNKNOWN_CHAPTER = "শিরোনামহীন"
@@ -159,6 +223,21 @@ def subject_label(subject: str) -> str:
 
 def class_label(class_id: str) -> str:
     return CLASS_LABELS.get(class_id, class_id.replace("_", " ").title())
+
+
+def subject_label_en(subject: str) -> str:
+    """English label for a subject key, including the stream-prefixed class_9_10 keys."""
+    if subject in SUBJECT_LABELS_EN:
+        return SUBJECT_LABELS_EN[subject]
+    for stream, stream_label in STREAM_LABELS_EN.items():
+        if subject.startswith(stream + "_"):
+            bare = subject[len(stream) + 1 :]
+            return f"{stream_label} · {SUBJECT_LABELS_EN.get(bare, bare.replace('_', ' ').title())}"
+    return subject.replace("_", " ").strip().title()
+
+
+def class_label_en(class_id: str) -> str:
+    return CLASS_LABELS_EN.get(class_id, class_id.replace("_", " ").title())
 
 
 def book_path(class_id: str, subject: str, stream: str | None = None) -> str:
@@ -402,6 +481,7 @@ def build_tree(classes: tuple[str, ...] | None = None) -> list[dict[str, Any]]:
                     "subject": subject,
                     "stream": stream,
                     "label": subject_label(subject),
+                    "label_en": subject_label_en(subject),
                     "book": book,
                     "indexed": book in cached,
                     "chapters": entries,
@@ -421,6 +501,7 @@ def build_tree(classes: tuple[str, ...] | None = None) -> list[dict[str, Any]]:
                 {
                     "class_id": class_id,
                     "label": class_label(class_id),
+                    "label_en": class_label_en(class_id),
                     "nested": bool(streams),
                     "subjects": subjects,
                 }
@@ -460,8 +541,10 @@ def lookup_book(book: str) -> dict[str, Any] | None:
                 return {
                     "class_id": node["class_id"],
                     "class_label": node["label"],
+                    "class_label_en": node["label_en"],
                     "subject": subject["subject"],
                     "subject_label": subject["label"],
+                    "subject_label_en": subject["label_en"],
                     "stream": subject["stream"],
                     "book": subject["book"],
                     "chapters": subject["chapters"],
