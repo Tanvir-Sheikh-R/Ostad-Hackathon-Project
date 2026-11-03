@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "sessionId": "session-6ee9eac9-b96b-489b-a706-7d9cce6bceff",
+  "cwd": "D:\\AI-ML\\AI Projects\\Study RAG - HackaThon",
+  "updatedAt": 1793714474893,
+  "checkpoints": [
+    {
+      "turn": 1,
+      "commit": "f1da7a285bbfabeb45da03b1b744778d0b32e5e6",
+      "parent": "3f840643fac8de08cf8bfc107c993a79e97c2a89",
+      "time": 1793712942078,
+      "untracked": [],
+      "truncated": false
+    },
+    {
+      "turn": 2,
+      "commit": "f1da7a285bbfabeb45da03b1b744778d0b32e5e6",
+      "parent": "f1da7a285bbfabeb45da03b1b744778d0b32e5e6",
+      "time": 1793713045826,
+      "untracked": [],
+      "truncated": false,
+      "after": {
+        "commit": "1e09a904cca7ed3e5f7eea510dd98ebebd19a4cf",
+        "time": 1793714471867
+      }
+    }
+  ],
+  "rolls": [],
+  "undos": []
+}

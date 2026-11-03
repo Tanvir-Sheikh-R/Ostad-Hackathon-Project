@@ -1,0 +1,127 @@
+# পাঠ সমাধান (Study-RAG)
+
+NCTB পাঠ্যবইয়ের ওপর ভিত্তি করে একটি বাংলা স্টাডি অ্যাসিস্ট্যান্ট। শিক্ষার্থী **শ্রেণি → বিষয় →
+অধ্যায়** বেছে নেয়, তারপর তিনটি ট্যাব পায়:
+
+| ট্যাব | কাজ |
+|---|---|
+| **চ্যাট** | নির্বাচিত অধ্যায়ের ভেতরেই hybrid retrieval (BM25 + FAISS) করে উত্তর দেয়, NDJSON স্ট্রিমে |
+| **কুইজ** | সেই অধ্যায়ের অংশ থেকে LLM ৫টি MCQ তৈরি করে; উত্তর দেওয়ার পরে স্কোর ও ব্যাখ্যা দেখায় |
+| **প্রোগ্রেস** | অধ্যায়ভিত্তিক গড় স্কোর, দুর্বল টপিক, এবং LLM-লেখা অভিভাবক সারসংক্ষেপ |
+
+প্রতিটি কুইজের ফল SQLite-এ সংরক্ষিত হয় (student, subject, chapter, topic, correct, date)।
+
+- **ব্যাকএন্ড:** FastAPI — Docker ইমেজ হিসেবে AWS EC2-তে (`deploy/`)
+- **ফ্রন্টএন্ড:** Next.js 16 — GitHub থেকে Vercel-এ (`web/`)
+
+## স্থাপত্য
+
+```
+web (Vercel, HTTPS)  ──NEXT_PUBLIC_API_BASE──▶  Caddy (TLS)  ──▶  FastAPI (EC2, Docker)
+                                                                    ├── embedding_cache/  (chapters.json + FAISS)
+                                                                    ├── model_cache/e5-base (query encoder)
+                                                                    ├── backend/data/*.db    (SQLite: quiz results)
+                                                                    └── backend/data/threads (chat history)
+```
+
+## ফাইল স্ট্রাকচার
+
+```
+.
+├── backend/                     # FastAPI (AWS)
+│   ├── app.py                   # app factory: CORS, gzip, lifespan, router mounting
+│   ├── run.py                   # python -m backend.run
+│   ├── config.py                # paths, models, tunables (env-overridable)
+│   ├── schemas.py               # Pydantic request/response models
+│   ├── store.py                 # thread persistence (one JSON file per chat)
+│   ├── api/                     # thin HTTP layer
+│   │   ├── catalog.py           # GET  /api/catalog   (ETag + cache headers)
+│   │   ├── chat.py              # threads CRUD + POST /api/threads/{id}/chat (NDJSON)
+│   │   ├── quiz.py              # POST /api/quiz/generate | /api/quiz/submit
+│   │   ├── progress.py          # GET  /api/progress | /api/progress/summary
+│   │   ├── health.py            # GET  /api/health | POST /api/health/warmup
+│   │   └── deps.py              # client id, chapter verification (trust boundary)
+│   ├── db/                      # SQLite
+│   │   ├── database.py          # connection + schema (WAL)
+│   │   └── quiz_results.py      # sessions, results, chapter/topic statistics
+│   └── rag/
+│       ├── retriever.py         # ★ hybrid BM25 + FAISS search over one chapter
+│       ├── chapters.py          # chapters.json access + catalog
+│       ├── embeddings.py        # e5-base loaded from a flat local directory
+│       ├── llm.py               # Groq → DeepSeek fallback, JSON repair
+│       ├── answer.py            # chat prompt + streaming answer
+│       ├── quiz.py              # MCQ generation + grading
+│       └── summary.py           # parent summary (+ deterministic fallback)
+│
+├── web/                         # Next.js (Vercel)
+│   ├── public/banner.png        # শীর্ষ ব্যানার (নিজের ছবি এখানে রাখুন)
+│   └── src/
+│       ├── app/page.tsx         # ব্যানার + ট্যাব শেল
+│       ├── components/          # banner, tab-nav, quiz-panel, progress-panel, ...
+│       └── lib/                 # api.ts, types.ts, cache.ts
+│
+├── deploy/                      # AWS deployment
+│   ├── Dockerfile.backend
+│   ├── docker-compose.aws.yml   # backend + Caddy (HTTPS)
+│   ├── Caddyfile
+│   └── DEPLOY.md                # ধাপে ধাপে রানবুক
+│
+├── pipeline/                    # ডেটা তৈরির নোটবুক (chapters.json + embedding_cache)
+├── scripts/api_smoke_test.py    # এন্ড-টু-এন্ড পরীক্ষা
+├── chapters.json                # অধ্যায় সূচি
+├── embedding_cache/             # প্রতি অধ্যায়ের chunks.json + FAISS index
+├── model_cache/e5-base/         # ~1.1 GB (git-এ নেই, ইমেজে বেক করা)
+└── docker-compose.yml           # লোকাল ডেভেলপমেন্ট (শুধু API)
+```
+
+## লোকালি চালানো
+
+```bash
+# 1) ব্যাকএন্ড
+python -m backend.run                 # http://127.0.0.1:8000  (docs: /api/docs)
+
+# অথবা Docker
+docker compose up -d --build
+
+# 2) ফ্রন্টএন্ড
+cd web
+cp .env.example .env.local            # NEXT_PUBLIC_API_BASE=http://127.0.0.1:8000
+npm install
+npm run dev                           # http://localhost:3000
+```
+
+`.env` তৈরি করতে `.env.example` দেখুন — অন্তত `GROQ_API_KEY` (বা `DEEPSEEK_API_KEY`) দরকার।
+
+## API
+
+| Method | Path | কাজ |
+|---|---|---|
+| GET | `/api/health` · POST `/api/health/warmup` | অবস্থা / এনকোডার প্রি-লোড |
+| GET | `/api/catalog` | শ্রেণি → বিষয় → অধ্যায় (ETag, `indexed` ফ্ল্যাগ সহ) |
+| GET/POST/PATCH/DELETE | `/api/threads[/{id}]` | চ্যাট থ্রেড |
+| POST | `/api/threads/{id}/chat` | প্রশ্ন → NDJSON স্ট্রিম (status/delta/done/error) |
+| POST | `/api/quiz/generate` | অধ্যায় থেকে ৫টি MCQ (answer key সার্ভারে সংরক্ষিত) |
+| POST | `/api/quiz/submit` | স্কোর + ব্যাখ্যা, SQLite-এ সংরক্ষণ |
+| GET | `/api/progress?student=` | অধ্যায়ভিত্তিক স্কোর, দুর্বল টপিক, সাম্প্রতিক কুইজ |
+| GET | `/api/progress/summary?student=` | অভিভাবকের সারসংক্ষেপ (LLM, টাইমআউটে হিসাবভিত্তিক ফলব্যাক) |
+
+## পরীক্ষা
+
+```bash
+python scripts/api_smoke_test.py                     # in-process, সব এন্ডপয়েন্ট
+python scripts/api_smoke_test.py --base-url https://api.example.com
+cd web && npm run typecheck && npm run build
+```
+
+## ডিপ্লয়
+
+AWS + Vercel-এর পূর্ণ রানবুক: [`deploy/DEPLOY.md`](deploy/DEPLOY.md)
+
+## নোট
+
+- **e5-base কেন:** `index.faiss` ফাইলগুলো ৭৬৮-মাত্রার (e5-base দিয়ে তৈরি)। কোয়েরি এনকোডার
+  বদলালে FAISS মাত্রা-অমিল ত্রুটি দেবে — ছোট মডেলে যেতে চাইলে পুরো কর্পাস আবার embed করতে হবে।
+  গতি বাড়ানোর আসল উপায় এখানে ইমেজ/ক্যাশ: `model_cache` একসময় ১০.১ GB ছিল (একই ওজনের পাঁচটি
+  কপি), এখন ফ্ল্যাট `e5-base/` ডিরেক্টরি ~১.১ GB এবং সরাসরি পাথ থেকে লোড হয়।
+- কুইজের `answer` ক্লায়েন্টেও যায় (স্পেক অনুযায়ী), কিন্তু গ্রেডিং সবসময় সার্ভারের সংরক্ষিত
+  কপি থেকে হয় — তাই টেম্পারিং করেও স্কোর বদলানো যায় না।

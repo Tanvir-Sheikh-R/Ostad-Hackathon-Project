@@ -1,0 +1,52 @@
+# ========================================================
+# পাঠ সমাধান — FastAPI backend (AWS / EC2)
+# Build from the repository root:
+#   docker build -f deploy/Dockerfile.backend -t patsomadhan-backend .
+# ========================================================
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    HOST=0.0.0.0 \
+    PORT=8000 \
+    # Everything the API needs is baked into the image; never reach for the network.
+    HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1 \
+    TOKENIZERS_PARALLELISM=false \
+    # Paths are overridable so the container layout is explicit, not implied.
+    DATA_DIR=/app/data \
+    CHAPTERS_INDEX=/app/chapters.json \
+    EMBEDDING_CACHE=/app/embedding_cache \
+    EMBEDDING_MODEL_DIR=/app/model_cache/e5-base \
+    CATALOG_CLASSES=class_9_10
+
+WORKDIR /app
+
+# --- dependencies (torch from the CPU index: no ~2.5 GB of unusable CUDA wheels) ---
+COPY requirements.txt .
+RUN pip install --upgrade pip \
+ && pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch \
+ && pip install --no-cache-dir --default-timeout=1000 -r requirements.txt
+
+# --- data artifacts -------------------------------------------------------------
+# e5-base as a flat model directory (~1.1 GB) loaded by path: no huggingface_hub
+# cache scan, no blobs/refs resolution, no 10 GB of duplicated weights.
+COPY model_cache/e5-base/ ./model_cache/e5-base/
+
+# chapters.json + one folder per embedded chapter (chunks.json, index.faiss, index.pkl).
+COPY chapters.json ./
+COPY embedding_cache/ ./embedding_cache/
+
+# --- application ----------------------------------------------------------------
+COPY backend/ ./backend/
+
+# Threads (JSON) and quiz results (SQLite) live here; mount a volume over /app/data.
+RUN mkdir -p /app/data/threads
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)" || exit 1
+
+CMD ["python", "-m", "backend.run"]

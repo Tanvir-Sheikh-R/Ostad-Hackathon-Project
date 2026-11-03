@@ -1,0 +1,35 @@
+# --- secrets (commit .env.example instead) ---
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# --- corpus inputs / pipeline outputs that are not needed to run the API ---
+pdf/
+extracted_text/
+bangla_book_db/
+book_cache_chapter/
+ocr_cache/
+
+# --- large local artifacts ---
+# The e5-base weights (~1.1 GB) are baked into the Docker image, not committed.
+# embedding_cache/ IS committed: it holds the prebuilt chapter indexes.
+model_cache/
+
+# --- runtime state (threads + SQLite) ---
+backend/data/threads/*.json
+backend/data/*.db
+backend/data/*.db-wal
+backend/data/*.db-shm
+
+# --- tooling ---
+venv/
+.venv/
+myenv/
+.myenv/
+node_modules/
+.next/
+.npm-cache/
+.preview/
+__pycache__/
+*.py[cod]

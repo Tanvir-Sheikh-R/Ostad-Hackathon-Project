@@ -1,0 +1,81 @@
+# ========================================================
+# পাঠ সমাধান — production stack for a single AWS EC2 host.
+#
+#   cd deploy
+#   docker compose -f docker-compose.aws.yml up -d --build
+#
+# Serves the API over HTTPS at https://${API_DOMAIN}; the Next.js frontend lives on
+# Vercel and calls that URL (NEXT_PUBLIC_API_BASE).
+# ========================================================
+name: patsomadhan
+
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    image: ${BACKEND_IMAGE:-patsomadhan-backend:latest}
+    container_name: patsomadhan-backend
+    restart: unless-stopped
+    env_file:
+      # Keys live outside the image: GROQ_API_KEY, DEEPSEEK_API_KEY, HF_TOKEN
+      - path: ../.env
+        required: false
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DATA_DIR=/app/data
+      # The Vercel production origin, plus every preview deployment.
+      - CORS_ORIGINS=${FRONTEND_ORIGIN:-http://localhost:3000}
+      - CORS_ORIGIN_REGEX=https://.*\.vercel\.app
+      # Keep the encoder resident and serve one worker: the model is ~1.1 GB and the
+      # workload is I/O-bound on the LLM, so extra workers only cost memory.
+      - WEB_CONCURRENCY=1
+    volumes:
+      # Chat threads (JSON) and quiz results (SQLite) survive image redeploys.
+      - backend_data:/app/data
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    networks:
+      - patsomadhan
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: patsomadhan-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      # A DNS name pointed at the EC2 Elastic IP (DuckDNS works and is free).
+      - API_DOMAIN=${API_DOMAIN:?set API_DOMAIN to a domain pointed at this host}
+      - ACME_EMAIL=${ACME_EMAIL:-admin@example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - patsomadhan
+
+volumes:
+  backend_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  patsomadhan:
+    driver: bridge

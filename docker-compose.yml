@@ -1,0 +1,33 @@
+# ========================================================
+# পাঠ সমাধান — local development stack.
+#
+#   docker compose up -d --build      # API on http://localhost:8000
+#   cd web && npm run dev             # UI on http://localhost:3000
+#
+# The frontend is developed and deployed with Next.js (Vercel), so it is not part of
+# this file. AWS deployment lives in deploy/docker-compose.aws.yml.
+# ========================================================
+name: patsomadhan-dev
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.backend
+    image: patsomadhan-backend:dev
+    container_name: patsomadhan-backend-dev
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DATA_DIR=/app/data
+      # Local Next.js dev server. Deployed origins come from .env / CORS_ORIGINS.
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+    volumes:
+      # Chat threads (JSON) and quiz results (SQLite) survive `docker compose down`.
+      - ./backend/data:/app/data

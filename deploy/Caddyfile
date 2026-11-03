@@ -1,0 +1,30 @@
+# Caddy in front of the FastAPI backend.
+#
+# Vercel serves the frontend over HTTPS, so the API must be HTTPS too — a plain HTTP
+# API would be blocked as mixed content by the browser. Caddy obtains and renews the
+# Let's Encrypt certificate automatically; nothing else needs configuring.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$API_DOMAIN} {
+	encode zstd gzip
+
+	# NDJSON chat answers must not be buffered, or tokens arrive in one burst.
+	reverse_proxy backend:8000 {
+		flush_interval -1
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

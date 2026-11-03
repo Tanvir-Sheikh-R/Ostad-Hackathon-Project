@@ -1,0 +1,37 @@
+# --- VCS / tooling ---
+.git
+.gitignore
+.dsh/
+.preview/
+.npm-cache/
+.venv/
+myenv/
+__pycache__/
+*.py[cod]
+*.so
+
+# --- frontend ---
+# Vercel builds the Next.js app; the API image never needs it.
+web/
+
+# --- corpus pipeline and its raw inputs ---
+pipeline/
+pdf/
+ocr_cache/
+*.ipynb
+
+# --- local secrets and local runtime state (never bake these into an image) ---
+.env
+.env.example
+backend/data/
+
+# --- model cache ---
+# Only the flattened model_cache/e5-base directory is copied into the image; the
+# HuggingFace hub layout (blobs/, snapshots/, refs/) is not used at runtime.
+model_cache/models--*
+model_cache/.locks
+
+# --- noise ---
+*.log
+*.tmp
+*.swp
