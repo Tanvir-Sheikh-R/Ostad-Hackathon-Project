@@ -6,6 +6,7 @@ import type {
   ProgressSummary,
   Quiz,
   QuizGrade,
+  ResetResult,
   StreamEvent,
   ThreadDetail,
   ThreadGroup,
@@ -283,11 +284,32 @@ export const api = {
       body: JSON.stringify({ quiz_id: quizId, student, answers }),
     }),
 
-  progress: (student: string) =>
-    request<Progress>(`/api/progress?student=${encodeURIComponent(student)}`),
-  summary: (student: string) =>
-    request<ProgressSummary>(`/api/progress/summary?student=${encodeURIComponent(student)}`),
+  /** Progress report; `subject` narrows it, the subject list always comes back full. */
+  progress: (student: string, subject?: string | null) =>
+    request<Progress>(`/api/progress?${progressQuery(student, subject)}`),
+  summary: (student: string, subject?: string | null) =>
+    request<ProgressSummary>(`/api/progress/summary?${progressQuery(student, subject)}`),
+
+  /** Delete the stored answers for one chapter (or all of them) — irreversible. */
+  resetChapter: (student: string, subject: string, chapter: string) =>
+    request<ResetResult>(
+      `/api/progress/chapter?student=${encodeURIComponent(student)}` +
+        `&subject=${encodeURIComponent(subject)}&chapter=${encodeURIComponent(chapter)}`,
+      { method: "DELETE" },
+    ),
+  resetAll: (student: string) =>
+    request<ResetResult>(`/api/progress/all?student=${encodeURIComponent(student)}`, {
+      method: "DELETE",
+    }),
 };
+
+function progressQuery(student: string, subject?: string | null): string {
+  const params = new URLSearchParams({ student });
+  if (subject) {
+    params.set("subject", subject);
+  }
+  return params.toString();
+}
 
 /**
  * POSTs a question and yields parsed NDJSON events as they arrive.

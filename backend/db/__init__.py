@@ -3,6 +3,8 @@
 from backend.db.database import init_db, session
 from backend.db.quiz_results import (
     chapter_stats,
+    delete_all_results,
+    delete_chapter_results,
     delete_session,
     get_session,
     now_iso,
@@ -12,6 +14,7 @@ from backend.db.quiz_results import (
     recent_attempts,
     save_attempt,
     save_session,
+    subject_stats,
     weak_topics,
 )
 
@@ -19,6 +22,8 @@ __all__ = [
     "init_db",
     "session",
     "chapter_stats",
+    "delete_all_results",
+    "delete_chapter_results",
     "delete_session",
     "get_session",
     "now_iso",
@@ -28,5 +33,6 @@ __all__ = [
     "recent_attempts",
     "save_attempt",
     "save_session",
+    "subject_stats",
     "weak_topics",
 ]

@@ -231,12 +231,40 @@ class RecentAttempt(BaseModel):
     created_at: str
 
 
+class SubjectStat(BaseModel):
+    """One subject the student has results for (drives the progress filter)."""
+
+    subject: str
+    subject_label: str = ""
+    class_id: str = ""
+    quiz_count: int
+    questions: int
+    correct: int
+    accuracy: float
+    last_at: str | None = None
+
+
+class ProgressFilter(BaseModel):
+    subject: str | None = None
+
+
 class ProgressResponse(BaseModel):
     student: str
+    filter: ProgressFilter = ProgressFilter()
+    # Every subject with results, always unfiltered, so the filter offers all of them.
+    subjects: list[SubjectStat] = []
     overall: OverallStats
     chapters: list[ChapterStat]
     weak_topics: list[TopicStat]
     recent: list[RecentAttempt]
+
+
+class ResetResponse(BaseModel):
+    """Result of deleting stored quiz results."""
+
+    student: str
+    scope: Literal["chapter", "all"]
+    deleted: int
 
 
 class SummaryResponse(BaseModel):

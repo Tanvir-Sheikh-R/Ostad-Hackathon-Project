@@ -223,12 +223,36 @@ export type RecentAttempt = {
   created_at: string;
 };
 
+export type SubjectStat = {
+  subject: string;
+  subject_label: string;
+  class_id?: string;
+  quiz_count: number;
+  questions: number;
+  correct: number;
+  accuracy: number;
+  last_at?: string | null;
+};
+
+export type ProgressFilter = {
+  subject: string | null;
+};
+
 export type Progress = {
   student: string;
+  filter: ProgressFilter;
+  /** Every subject with results (never filtered) — drives the filter chips. */
+  subjects: SubjectStat[];
   overall: OverallStats;
   chapters: ChapterStat[];
   weak_topics: TopicStat[];
   recent: RecentAttempt[];
+};
+
+export type ResetResult = {
+  student: string;
+  scope: "chapter" | "all";
+  deleted: number;
 };
 
 export type ProgressSummary = {

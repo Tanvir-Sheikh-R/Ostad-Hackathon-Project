@@ -1,4 +1,4 @@
-"""Progress tab endpoints: computed statistics plus the LLM parent summary."""
+"""Progress tab endpoints: statistics, subject filter, parent summary, resets."""
 
 from __future__ import annotations
 
@@ -15,17 +15,18 @@ from backend.db import quiz_results as results_db
 from backend.rag import chapters
 from backend.rag.i18n import Language, msg
 from backend.rag.summary import parent_summary
-from backend.schemas import ProgressResponse, SummaryResponse
+from backend.schemas import ProgressResponse, ResetResponse, SummaryResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/progress", tags=["progress"])
 
 _STUDENT_MAX = 64
+_SUBJECT_MAX = 64
 
 # Summaries cost an LLM call per request; identical statistics reuse the same text.
-# The key includes the language, so toggling EN/বাংলা produces a separate summary
-# instead of serving the other language's cached prose.
+# The key includes the language and the subject filter, so toggling either produces a
+# separate summary instead of serving prose written for a different view.
 _summary_lock = threading.Lock()
 _summary_cache: dict[str, dict[str, Any]] = {}
 _SUMMARY_CACHE_MAX = 128
@@ -38,10 +39,36 @@ def _student_name(raw: str | None, language: Language) -> str:
     return name
 
 
-def _digest(stats: dict[str, Any], language: Language) -> str:
-    """Stable key for the statistics (and language) a summary was written from."""
+def _clean_subject(raw: str | None) -> str | None:
+    subject = " ".join((raw or "").split())[:_SUBJECT_MAX]
+    return subject or None
+
+
+def _localize(rows: list[dict[str, Any]], language: Language) -> list[dict[str, Any]]:
+    """Add the display titles for each row (English when available).
+
+    Chapter titles come from chapter_titles_en.json, subject labels from the catalog.
+    Both fall back to the value stored with the result, so a book that is no longer in
+    chapters.json still renders.
+    """
+    for row in rows:
+        book = f"{row.get('class_id') or ''}/{row['subject']}"
+        chapter = row.get("chapter")
+        if chapter:
+            row["chapter_label"] = chapters.chapter_display(book, chapter, language)
+        info = chapters.lookup_book(book)
+        if info:
+            label = info["subject_label_en"] if language == "en" else info["subject_label"]
+            if label:
+                row["subject_label"] = label
+    return rows
+
+
+def _digest(stats: dict[str, Any], language: Language, subject: str | None) -> str:
+    """Stable key for the statistics (plus language and filter) a summary came from."""
     payload = {
         "language": language,
+        "subject": subject,
         "overall": stats.get("overall"),
         "chapters": stats.get("chapters"),
         "weak_topics": stats.get("weak_topics"),
@@ -50,8 +77,10 @@ def _digest(stats: dict[str, Any], language: Language) -> str:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()[:24]
 
 
-def _cached_summary(stats: dict[str, Any], language: Language) -> dict[str, Any]:
-    key = _digest(stats, language)
+def _cached_summary(
+    stats: dict[str, Any], language: Language, subject: str | None
+) -> dict[str, Any]:
+    key = _digest(stats, language, subject)
     with _summary_lock:
         hit = _summary_cache.get(key)
     if hit is not None:
@@ -65,35 +94,46 @@ def _cached_summary(stats: dict[str, Any], language: Language) -> dict[str, Any]
     return result
 
 
-def _localize(rows: list[dict[str, Any]], language: Language) -> list[dict[str, Any]]:
-    """Add the display title for each chapter row (English when available)."""
-    for row in rows:
-        book = f"{row.get('class_id') or ''}/{row['subject']}"
-        row["chapter_label"] = chapters.chapter_display(book, row["chapter"], language)
-    return rows
+def _invalidate_summaries() -> None:
+    """Drop cached prose after results change, so a reset shows up immediately."""
+    with _summary_lock:
+        _summary_cache.clear()
+
+
+def _report(student: str, language: Language, subject: str | None) -> dict[str, Any]:
+    report = results_db.progress_report(student, subject=subject)
+    for key in ("chapters", "weak_topics", "recent", "subjects"):
+        report[key] = _localize(report[key], language)
+    report["filter"] = {"subject": subject}
+    return report
 
 
 @router.get("", response_model=ProgressResponse)
 def get_progress(
     student: str | None = Query(default=None, max_length=_STUDENT_MAX),
+    subject: str | None = Query(default=None, max_length=_SUBJECT_MAX),
     language: Language = Depends(request_language),
 ) -> ProgressResponse:
-    """Average score per chapter, weakest topics, and the recent attempts."""
-    report = results_db.progress_report(_student_name(student, language))
-    for key in ("chapters", "weak_topics", "recent"):
-        report[key] = _localize(report[key], language)
-    return ProgressResponse(**report)
+    """Average score per chapter, weakest topics and recent attempts.
+
+    `subject` narrows every aggregate to one subject; the `subjects` list always holds
+    every subject the student has results for, which is what the filter renders.
+    """
+    name = _student_name(student, language)
+    return ProgressResponse(**_report(name, language, _clean_subject(subject)))
 
 
 @router.get("/summary", response_model=SummaryResponse)
 def get_summary(
     student: str | None = Query(default=None, max_length=_STUDENT_MAX),
+    subject: str | None = Query(default=None, max_length=_SUBJECT_MAX),
     language: Language = Depends(request_language),
 ) -> SummaryResponse:
-    """A short report for a parent, written from the stored statistics."""
+    """A short report for a parent, written from the (optionally filtered) statistics."""
     name = _student_name(student, language)
-    stats = results_db.progress_report(name)
-    result = _cached_summary(stats, language)
+    filter_subject = _clean_subject(subject)
+    stats = results_db.progress_report(name, subject=filter_subject)
+    result = _cached_summary(stats, language, filter_subject)
     return SummaryResponse(
         student=name,
         summary=str(result["summary"]),
@@ -101,3 +141,27 @@ def get_summary(
         overall=stats["overall"],
         generated_at=results_db.now_iso(),
     )
+
+
+@router.delete("/chapter", response_model=ResetResponse)
+def reset_chapter(
+    student: str = Query(..., max_length=_STUDENT_MAX),
+    subject: str = Query(..., max_length=_SUBJECT_MAX),
+    chapter: str = Query(..., min_length=1, max_length=200),
+) -> ResetResponse:
+    """Delete every stored answer for one chapter of one subject."""
+    name = _student_name(student, None)
+    deleted = results_db.delete_chapter_results(name, _clean_subject(subject) or "", chapter)
+    _invalidate_summaries()
+    logger.info("Deleted %s answers for %s / %s / %s", deleted, name, subject, chapter)
+    return ResetResponse(student=name, scope="chapter", deleted=deleted)
+
+
+@router.delete("/all", response_model=ResetResponse)
+def reset_all(student: str = Query(..., max_length=_STUDENT_MAX)) -> ResetResponse:
+    """Delete every stored answer for one student (all subjects, all chapters)."""
+    name = _student_name(student, None)
+    deleted = results_db.delete_all_results(name)
+    _invalidate_summaries()
+    logger.info("Deleted %s answers for %s (all)", deleted, name)
+    return ResetResponse(student=name, scope="all", deleted=deleted)

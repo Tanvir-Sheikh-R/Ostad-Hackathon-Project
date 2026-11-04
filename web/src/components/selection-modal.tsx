@@ -152,7 +152,7 @@ export function SelectionModal({
         </div>
 
         {/* Soft, flat base box around the selection form (no gradient). */}
-        <div className="mt-5 rounded-2xl bg-accent-soft/55 p-4 ring-1 ring-accent/15">
+        <div className="mt-5">
           <div className="space-y-4">
             <div>
               <div className="flex items-baseline justify-between pb-1.5">

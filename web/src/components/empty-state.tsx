@@ -39,9 +39,9 @@ export function EmptyState({
         <span className="text-accent">{t("chat.askLine")}</span>
       </p>
 
-      {contextLabel ? (
+      {/* {contextLabel ? (
         <p className="pt-3 text-center text-xs text-muted">{contextLabel}</p>
-      ) : null}
+      ) : null} */}
       {hint ? (
         <p className="max-w-md pt-2 text-center text-xs leading-relaxed text-amber-700">{hint}</p>
       ) : null}

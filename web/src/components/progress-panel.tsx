@@ -6,13 +6,20 @@ import {
   LineChart,
   Loader2,
   RefreshCw,
+  RotateCcw,
   Target,
+  Trash2,
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { currentLanguage, type TFunction } from "@/lib/i18n";
 import type { Progress, ProgressSummary } from "@/lib/types";
+
+/** What a pending reset will delete. */
+type ResetTarget =
+  | { scope: "chapter"; subject: string; chapter: string; label: string }
+  | { scope: "all"; label: string };
 
 function accuracyTone(accuracy: number): { bar: string; text: string } {
   if (accuracy >= 80) return { bar: "bg-emerald-500", text: "text-emerald-700" };
@@ -43,7 +50,7 @@ export function ProgressPanel({
   /** Bumped by the quiz tab after a graded attempt, so this panel refetches. */
   refreshKey: number;
   onGoQuiz: () => void;
-  onToast: (tone: "error" | "info", message: string) => void;
+  onToast: (tone: "error" | "info", message: string, durationMs?: number) => void;
   t: TFunction;
 }) {
   const [progress, setProgress] = useState<Progress | null>(null);
@@ -51,22 +58,29 @@ export function ProgressPanel({
   const [loading, setLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Bumped by the retry button so the effect below runs again.
+  // Bumped to force a refetch (retry button, or after a reset).
   const [attempt, setAttempt] = useState(0);
+  /** Subject filter: null means "all subjects". */
+  const [subject, setSubject] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<ResetTarget | null>(null);
+  const [resetting, setResetting] = useState(false);
 
-  const loadSummary = useCallback(async () => {
-    setSummaryLoading(true);
-    try {
-      setSummary(await api.summary(student));
-    } catch (failure) {
-      onToast(
-        "error",
-        failure instanceof ApiError ? failure.message : t("progress.summaryFailed"),
-      );
-    } finally {
-      setSummaryLoading(false);
-    }
-  }, [onToast, student, t]);
+  const loadSummary = useCallback(
+    async (filter: string | null) => {
+      setSummaryLoading(true);
+      try {
+        setSummary(await api.summary(student, filter));
+      } catch (failure) {
+        onToast(
+          "error",
+          failure instanceof ApiError ? failure.message : t("progress.summaryFailed"),
+        );
+      } finally {
+        setSummaryLoading(false);
+      }
+    },
+    [onToast, student, t],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -75,14 +89,19 @@ export function ProgressPanel({
 
     (async () => {
       try {
-        const loaded = await api.progress(student);
+        const loaded = await api.progress(student, subject);
         if (cancelled) {
           return;
         }
         setProgress(loaded);
         setLoading(false);
+        // The selected subject disappeared (e.g. its results were just reset).
+        if (subject && !loaded.subjects.some((item) => item.subject === subject)) {
+          setSubject(null);
+          return;
+        }
         if (loaded.overall.questions > 0) {
-          await loadSummary();
+          await loadSummary(subject);
         } else {
           setSummary(null);
         }
@@ -98,7 +117,32 @@ export function ProgressPanel({
     return () => {
       cancelled = true;
     };
-  }, [attempt, loadSummary, refreshKey, student, t]);
+  }, [attempt, loadSummary, refreshKey, student, subject, t]);
+
+  const performReset = useCallback(async () => {
+    const target = confirm;
+    if (!target || resetting) {
+      return;
+    }
+    setResetting(true);
+    try {
+      const result =
+        target.scope === "chapter"
+          ? await api.resetChapter(student, target.subject, target.chapter)
+          : await api.resetAll(student);
+      setConfirm(null);
+      setSummary(null);
+      onToast("info", t("progress.resetDone", { count: result.deleted }), 2500);
+      setAttempt((current) => current + 1);
+    } catch (failure) {
+      onToast(
+        "error",
+        failure instanceof ApiError ? failure.message : t("progress.resetFailed"),
+      );
+    } finally {
+      setResetting(false);
+    }
+  }, [confirm, onToast, resetting, student, t]);
 
   if (loading) {
     return (
@@ -130,9 +174,10 @@ export function ProgressPanel({
   }
 
   const overall = progress?.overall;
+  const subjects = progress?.subjects ?? [];
   const hasData = Boolean(overall && overall.questions > 0);
 
-  if (!hasData) {
+  if (!hasData && subjects.length === 0) {
     return (
       <div className="mx-auto flex w-full max-w-3xl flex-col items-center px-4 py-16 text-center">
         <span className="grid size-12 place-items-center rounded-2xl bg-emerald-50 text-emerald-700">
@@ -161,7 +206,7 @@ export function ProgressPanel({
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-5">
-      <header className="flex flex-wrap items-start justify-between gap-3">
+      <header className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-[12px] text-muted">
             <LineChart className="size-3.5" />
@@ -171,20 +216,58 @@ export function ProgressPanel({
             {t("progress.overallAccuracy", { accuracy: overall?.accuracy ?? 0 })}
           </h2>
         </div>
-        <button
-          type="button"
-          onClick={() => void loadSummary()}
-          disabled={summaryLoading}
-          className="flex items-center gap-1.5 rounded-full bg-neutral-100 px-4 py-2 text-[13px] font-medium text-ink transition hover:bg-neutral-200 disabled:opacity-60"
-        >
-          {summaryLoading ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="size-3.5" />
-          )}
-          {t("progress.refreshSummary")}
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => void loadSummary(subject)}
+            disabled={summaryLoading}
+            title={t("progress.refreshSummary")}
+            className="flex items-center gap-1.5 rounded-full bg-neutral-100 px-3 py-2 text-[12.5px] font-medium text-ink transition hover:bg-neutral-200 disabled:opacity-60"
+          >
+            {summaryLoading ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="size-3.5" />
+            )}
+            <span className="hidden sm:inline">{t("progress.refreshSummary")}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirm({ scope: "all", label: t("progress.resetAllTarget") })}
+            title={t("progress.resetAll")}
+            className="flex items-center gap-1.5 rounded-full bg-rose-50 px-3 py-2 text-[12.5px] font-medium text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-100"
+          >
+            <Trash2 className="size-3.5" />
+            <span className="hidden sm:inline">{t("progress.resetAll")}</span>
+          </button>
+        </div>
       </header>
+
+      {subjects.length > 1 ? (
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <span className="pr-1 text-[11px] font-medium text-muted">
+            {t("progress.subjectFilter")}
+          </span>
+          <Chip active={subject === null} onClick={() => setSubject(null)}>
+            {t("progress.allSubjects")}
+          </Chip>
+          {subjects.map((item) => (
+            <Chip
+              key={item.subject}
+              active={subject === item.subject}
+              onClick={() => setSubject(item.subject)}
+              title={t("progress.subjectChipTitle", {
+                label: item.subject_label || item.subject,
+                quizzes: item.quiz_count,
+                questions: item.questions,
+              })}
+            >
+              {item.subject_label || item.subject}
+              <span className="pl-1 text-[10.5px] opacity-70">{item.quiz_count}</span>
+            </Chip>
+          ))}
+        </div>
+      ) : null}
 
       <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
         <Stat label={t("progress.stat.quizzes")} value={String(overall?.quiz_count ?? 0)} />
@@ -202,7 +285,7 @@ export function ProgressPanel({
           {chapters.map((chapter) => {
             const tone = accuracyTone(chapter.accuracy);
             return (
-              <div key={`${chapter.subject}-${chapter.chapter}`}>
+              <div key={`${chapter.subject}-${chapter.chapter}`} className="group">
                 <div className="flex items-baseline justify-between gap-2">
                   <p className="min-w-0 truncate text-[13px] text-ink">
                     {chapter.chapter_label || chapter.chapter}
@@ -210,16 +293,38 @@ export function ProgressPanel({
                       {chapter.subject_label || chapter.subject}
                     </span>
                   </p>
-                  <p className={`shrink-0 text-[12.5px] font-semibold ${tone.text}`}>
-                    {chapter.accuracy}%
-                    <span className="pl-1 font-normal text-muted">
-                      {t("progress.chapterMeta", {
-                        correct: chapter.correct,
-                        questions: chapter.questions,
-                        quizzes: chapter.quiz_count,
-                      })}
+                  <span className="flex shrink-0 items-center gap-1">
+                    <span className={`text-[12.5px] font-semibold ${tone.text}`}>
+                      {chapter.accuracy}%
+                      <span className="pl-1 font-normal text-muted">
+                        {t("progress.chapterMeta", {
+                          correct: chapter.correct,
+                          questions: chapter.questions,
+                          quizzes: chapter.quiz_count,
+                        })}
+                      </span>
                     </span>
-                  </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setConfirm({
+                          scope: "chapter",
+                          subject: chapter.subject,
+                          chapter: chapter.chapter,
+                          label: `${chapter.chapter_label || chapter.chapter} · ${
+                            chapter.subject_label || chapter.subject
+                          }`,
+                        })
+                      }
+                      title={t("progress.resetChapter")}
+                      aria-label={t("progress.resetChapterAria", {
+                        chapter: chapter.chapter_label || chapter.chapter,
+                      })}
+                      className="rounded-md p-1 text-muted opacity-40 transition hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100 focus:opacity-100"
+                    >
+                      <RotateCcw className="size-3.5" />
+                    </button>
+                  </span>
                 </div>
                 <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
                   <div
@@ -337,7 +442,88 @@ export function ProgressPanel({
           ))}
         </ul>
       </section>
+
+      {confirm ? (
+        <div className="bb-fade-in fixed inset-0 z-50 grid place-items-center bg-neutral-900/30 p-4 backdrop-blur-sm">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-label={
+              confirm.scope === "all" ? t("progress.resetTitleAll") : t("progress.resetTitleChapter")
+            }
+            className="bb-slide-up w-full max-w-sm rounded-3xl bg-surface p-6 card-shadow"
+          >
+            <div className="flex items-start gap-3">
+              <span className="grid size-9 shrink-0 place-items-center rounded-full bg-rose-50 text-rose-600">
+                <Trash2 className="size-4" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-base font-bold text-ink">
+                  {confirm.scope === "all"
+                    ? t("progress.resetTitleAll")
+                    : t("progress.resetTitleChapter")}
+                </h2>
+                <p className="truncate pt-1 text-[13px] text-neutral-600">{confirm.label}</p>
+                <p className="pt-2 text-[12px] leading-relaxed text-muted">
+                  {t("progress.resetBody", { target: confirm.label })}
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirm(null)}
+                disabled={resetting}
+                className="rounded-full px-4 py-2 text-[13px] font-medium text-neutral-600 transition hover:bg-neutral-100"
+              >
+                {t("progress.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={() => void performReset()}
+                disabled={resetting}
+                className="flex items-center gap-1.5 rounded-full bg-rose-600 px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-rose-700 disabled:bg-rose-300"
+              >
+                {resetting ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <RotateCcw className="size-3.5" />
+                )}
+                {t("progress.resetConfirm")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function Chip({
+  active,
+  onClick,
+  title,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-pressed={active}
+      className={`rounded-full px-2.5 py-1 text-[12px] font-medium transition ${
+        active
+          ? "bg-emerald-600 text-white"
+          : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200 hover:text-ink"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 

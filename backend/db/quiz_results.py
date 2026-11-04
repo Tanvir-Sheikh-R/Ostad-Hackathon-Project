@@ -124,11 +124,21 @@ def save_attempt(
     return len(rows)
 
 
-def chapter_stats(student: str) -> list[dict[str, Any]]:
+def _subject_clause(subject: str | None) -> tuple[str, tuple[Any, ...]]:
+    """Optional subject filter shared by every progress query.
+
+    Written as "? IS NULL OR subject = ?" so one prepared statement serves both the
+    filtered and unfiltered report instead of string-building SQL.
+    """
+    return " AND (? IS NULL OR subject = ?)", (subject, subject)
+
+
+def chapter_stats(student: str, subject: str | None = None) -> list[dict[str, Any]]:
     """Accuracy per chapter, strongest first (the progress table order)."""
+    clause, params = _subject_clause(subject)
     with session() as connection:
         rows = connection.execute(
-            """
+            f"""
             SELECT subject,
                    subject_label,
                    class_id,
@@ -138,11 +148,11 @@ def chapter_stats(student: str) -> list[dict[str, Any]]:
                    SUM(is_correct)         AS correct,
                    MAX(created_at)         AS last_at
             FROM quiz_results
-            WHERE student = ?
+            WHERE student = ?{clause}
             GROUP BY subject, subject_label, class_id, chapter
             ORDER BY CAST(SUM(is_correct) AS REAL) / COUNT(*) DESC, last_at DESC
             """,
-            (student,),
+            (student, *params),
         ).fetchall()
 
     stats: list[dict[str, Any]] = []
@@ -158,23 +168,24 @@ def chapter_stats(student: str) -> list[dict[str, Any]]:
     return stats
 
 
-def weak_topics(student: str, limit: int = 5) -> list[dict[str, Any]]:
+def weak_topics(student: str, limit: int = 5, subject: str | None = None) -> list[dict[str, Any]]:
     """Topics answered below WEAK_TOPIC_THRESHOLD, worst first."""
+    clause, params = _subject_clause(subject)
     with session() as connection:
         rows = connection.execute(
-            """
+            f"""
             SELECT subject, subject_label, class_id, chapter, topic,
                    COUNT(*)        AS questions,
                    SUM(is_correct) AS correct,
                    MAX(created_at) AS last_at
             FROM quiz_results
-            WHERE student = ?
+            WHERE student = ?{clause}
             GROUP BY subject, subject_label, class_id, chapter, topic
             ORDER BY CAST(SUM(is_correct) AS REAL) / COUNT(*) ASC,
                      COUNT(*) DESC,
                      last_at DESC
             """,
-            (student,),
+            (student, *params),
         ).fetchall()
 
     topics: list[dict[str, Any]] = []
@@ -194,19 +205,20 @@ def weak_topics(student: str, limit: int = 5) -> list[dict[str, Any]]:
     return topics
 
 
-def overall_stats(student: str) -> dict[str, Any]:
+def overall_stats(student: str, subject: str | None = None) -> dict[str, Any]:
+    clause, params = _subject_clause(subject)
     with session() as connection:
         row = connection.execute(
-            """
+            f"""
             SELECT COUNT(DISTINCT quiz_id) AS quiz_count,
                    COUNT(*)                AS questions,
                    SUM(is_correct)         AS correct,
                    MIN(created_at)         AS first_at,
                    MAX(created_at)         AS last_at
             FROM quiz_results
-            WHERE student = ?
+            WHERE student = ?{clause}
             """,
-            (student,),
+            (student, *params),
         ).fetchone()
 
     item = row_to_dict(row) or {}
@@ -224,11 +236,14 @@ def overall_stats(student: str) -> dict[str, Any]:
     }
 
 
-def recent_attempts(student: str, limit: int = 10) -> list[dict[str, Any]]:
+def recent_attempts(
+    student: str, limit: int = 10, subject: str | None = None
+) -> list[dict[str, Any]]:
     """One entry per finished quiz, newest first."""
+    clause, params = _subject_clause(subject)
     with session() as connection:
         rows = connection.execute(
-            """
+            f"""
             SELECT quiz_id,
                    subject,
                    subject_label,
@@ -238,12 +253,12 @@ def recent_attempts(student: str, limit: int = 10) -> list[dict[str, Any]]:
                    SUM(is_correct) AS correct,
                    MIN(created_at) AS created_at
             FROM quiz_results
-            WHERE student = ?
+            WHERE student = ?{clause}
             GROUP BY quiz_id
             ORDER BY created_at DESC
             LIMIT ?
             """,
-            (student, limit),
+            (student, *params, limit),
         ).fetchall()
 
     attempts: list[dict[str, Any]] = []
@@ -258,6 +273,55 @@ def recent_attempts(student: str, limit: int = 10) -> list[dict[str, Any]]:
     return attempts
 
 
+def subject_stats(student: str) -> list[dict[str, Any]]:
+    """Subjects the student has actually been quizzed on — the progress-tab filter."""
+    with session() as connection:
+        rows = connection.execute(
+            """
+            SELECT subject,
+                   subject_label,
+                   class_id,
+                   COUNT(DISTINCT quiz_id) AS quiz_count,
+                   COUNT(*)                AS questions,
+                   SUM(is_correct)         AS correct,
+                   MAX(created_at)         AS last_at
+            FROM quiz_results
+            WHERE student = ?
+            GROUP BY subject, subject_label, class_id
+            ORDER BY last_at DESC
+            """,
+            (student,),
+        ).fetchall()
+
+    subjects: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        questions = int(item["questions"] or 0)
+        correct = int(item["correct"] or 0)
+        item["correct"] = correct
+        item["questions"] = questions
+        item["accuracy"] = round(100.0 * correct / questions, 1) if questions else 0.0
+        subjects.append(item)
+    return subjects
+
+
+def delete_chapter_results(student: str, subject: str, chapter: str) -> int:
+    """Delete every answered question for one chapter. Returns rows removed."""
+    with session() as connection:
+        cursor = connection.execute(
+            "DELETE FROM quiz_results WHERE student = ? AND subject = ? AND chapter = ?",
+            (student, subject, chapter),
+        )
+        return cursor.rowcount or 0
+
+
+def delete_all_results(student: str) -> int:
+    """Delete every answered question for one student. Returns rows removed."""
+    with session() as connection:
+        cursor = connection.execute("DELETE FROM quiz_results WHERE student = ?", (student,))
+        return cursor.rowcount or 0
+
+
 def student_list(limit: int = 50) -> list[str]:
     """Distinct students that have results — used to validate ?student= input."""
     with session() as connection:
@@ -267,12 +331,23 @@ def student_list(limit: int = 50) -> list[str]:
     return [row["student"] for row in rows]
 
 
-def progress_report(student: str, *, weak_limit: int = 5, recent_limit: int = 10) -> dict[str, Any]:
-    """Everything the progress tab renders, in one call."""
+def progress_report(
+    student: str,
+    *,
+    subject: str | None = None,
+    weak_limit: int = 5,
+    recent_limit: int = 10,
+) -> dict[str, Any]:
+    """Everything the progress tab renders, in one call.
+
+    `subject` narrows every aggregate to one subject; the full subject list is always
+    returned so the filter UI can offer every subject the student has quizzed on.
+    """
     return {
         "student": student,
-        "overall": overall_stats(student),
-        "chapters": chapter_stats(student),
-        "weak_topics": weak_topics(student, limit=weak_limit),
-        "recent": recent_attempts(student, limit=recent_limit),
+        "subjects": subject_stats(student),
+        "overall": overall_stats(student, subject),
+        "chapters": chapter_stats(student, subject),
+        "weak_topics": weak_topics(student, limit=weak_limit, subject=subject),
+        "recent": recent_attempts(student, limit=recent_limit, subject=subject),
     }

@@ -59,9 +59,9 @@ export function AppHeader({
             <p className="truncate pt-0.5 text-[12px] leading-snug text-muted">
               {t("app.description")}
             </p>
-            <span className="mt-1 inline-block max-w-full rounded-full bg-gradient-to-r from-amber-100 via-orange-100 to-rose-100 px-2 py-0.5 text-[9.5px] leading-tight font-semibold text-amber-900 ring-1 ring-amber-300/60">
+            {/* <span className="mt-1 inline-block max-w-full rounded-full bg-gradient-to-r from-amber-100 via-orange-100 to-rose-100 px-2 py-0.5 text-[9.5px] leading-tight font-semibold text-amber-900 ring-1 ring-amber-300/60">
               🏆 {t("app.sticker")}
-            </span>
+            </span> */}
           </div>
 
           <BannerImage
