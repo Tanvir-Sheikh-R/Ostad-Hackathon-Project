@@ -66,7 +66,7 @@ export function AppHeader({
 
           <BannerImage
             alt={t("app.bannerAlt")}
-            title={bannerSubtitle}
+            title={"Built for YUNet AIgnite Buildathon 2026"}
             className="hidden h-13 w-26 shrink-0 sm:block lg:w-46 rounded-lg"
           />
         </div>
