@@ -10,9 +10,9 @@ const bengali = Hind_Siliguri({
 });
 
 export const metadata: Metadata = {
-  title: "Path Somadhan",
+  title: "Boi Bondhu",
   description:
-    "Chat with your NCTB textbook, take chapter quizzes and track progress — for students and parents.",
+    "Boi Bondhu — chat with your NCTB textbook, take chapter quizzes and track progress.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

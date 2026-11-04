@@ -55,9 +55,9 @@ async def lifespan(_: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="পাঠ সমাধান API",
+        title="বই বন্ধু (Boi Bondhu) API",
         description="NCTB পাঠ্যবইয়ের ওপর ভিত্তি করে চ্যাট, কুইজ ও অগ্রগতি রিপোর্ট।",
-        version="2.0.0",
+        version="2.1.0",
         docs_url="/api/docs",
         redoc_url=None,
         openapi_url="/api/openapi.json",

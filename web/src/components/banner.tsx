@@ -36,7 +36,7 @@ export function BannerImage({
           src="/banner.png"
           alt={alt}
           onError={() => setFailed(true)}
-          className="h-full w-full object-cover"
+          className="h-full w-full object-cover scale-[1.1] transition-transform duration-300 ease-in-out hover:scale-[1.12]"
         />
       )}
     </div>

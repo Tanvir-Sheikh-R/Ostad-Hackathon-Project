@@ -50,8 +50,9 @@ export function AppHeader({
           >
             <PanelLeft className="size-4" />
           </button>
+          
 
-          <div className="min-w-0 flex-1 py-1">
+          <div className="min-w-0">
             <h1 className="truncate text-[16px] leading-tight font-bold tracking-tight text-ink sm:text-lg">
               {t("app.title")}
             </h1>
@@ -66,7 +67,7 @@ export function AppHeader({
           <BannerImage
             alt={t("app.bannerAlt")}
             title={bannerSubtitle}
-            className="hidden h-16 w-28 shrink-0 sm:block lg:w-36"
+            className="hidden h-13 w-26 shrink-0 sm:block lg:w-46 rounded-lg"
           />
         </div>
 
