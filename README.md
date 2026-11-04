@@ -13,18 +13,25 @@ NCTB পাঠ্যবইয়ের ওপর ভিত্তি করে �
 
 - **UI ভাষা:** ডিফল্ট **English**, হেডারের **EN / বাংলা** টগল দিয়ে বদলানো যায় — UI লেখা,
   বিষয়ের নাম এবং AI-এর উত্তর/কুইজ/সারসংক্ষেপের ভাষা একসাথে বদলায় (বিস্তারিত নিচে)।
-- **ব্যাকএন্ড:** FastAPI — Docker ইমেজ হিসেবে AWS EC2-তে (`deploy/`)
-- **ফ্রন্টএন্ড:** Next.js 16 — GitHub থেকে Vercel-এ (`web/`)
+- **ব্যাকএন্ড:** FastAPI — Docker ইমেজ (Docker Hub) হিসেবে AWS EC2-তে, `http://13.48.12.56:8000` (`deploy/`)
+- **ফ্রন্টএন্ড:** Next.js 16 — GitHub থেকে Vercel-এ, https://boibondhu.vercel.app (`web/`)
 
 ## স্থাপত্য
 
 ```
-web (Vercel, HTTPS)  ──NEXT_PUBLIC_API_BASE──▶  Caddy (TLS)  ──▶  FastAPI (EC2, Docker)
-                                                                    ├── embedding_cache/  (chapters.json + FAISS)
-                                                                    ├── model_cache/e5-base (query encoder)
-                                                                    ├── backend/data/*.db    (SQLite: quiz results)
-                                                                    └── backend/data/threads (chat history)
+ব্রাউজার ──▶ https://boibondhu.vercel.app/api/*        (same-origin, HTTPS)
+                     │  next.config.ts rewrite (সার্ভার-সাইড, TLS/CORS লাগে না)
+                     ▼
+              http://13.48.12.56:8000 ──▶ FastAPI container (EC2, Docker Hub image)
+                                            ├── embedding_cache/   (chapters.json + FAISS)
+                                            ├── model_cache/e5-base (query encoder)
+                                            ├── backend/data/*.db   (SQLite: quiz results)
+                                            └── backend/data/threads (chat history)
 ```
+
+Vercel সাইট HTTPS-এ, EC2-তে সার্টিফিকেট নেই — তাই ব্রাউজার কখনো IP-তে সরাসরি কল করে না;
+Vercel-এর rewrite সার্ভার-সাইডে `/api/*` পাঠায়। ফলে mixed-content ব্লক আর CORS দুটোই নেই।
+(নিজের ডোমেইন + Caddy দিয়ে সরাসরি HTTPS-ও করা যায় — `deploy/DEPLOY.md` §7।)
 
 ## ফাইল স্ট্রাকচার
 
@@ -109,10 +116,13 @@ docker compose up -d --build
 
 # 2) ফ্রন্টএন্ড
 cd web
-cp .env.example .env.local            # NEXT_PUBLIC_API_BASE=http://127.0.0.1:8000
+cp .env.example .env.local            # API_PROXY_TARGET=http://127.0.0.1:8000
 npm install
 npm run dev                           # http://localhost:3000
 ```
+
+লোকালেও প্রোডাকশনের মতোই চলে: ব্রাউজার `/api/*` কল করে, Next সেটি `API_PROXY_TARGET`-এ
+forward করে — তাই লোকালে CORS লাগে না।
 
 `.env` তৈরি করতে `.env.example` দেখুন — অন্তত `GROQ_API_KEY` (বা `DEEPSEEK_API_KEY`) দরকার।
 
@@ -152,6 +162,19 @@ cd web && npm run typecheck && npm run build
 ## ডিপ্লয়
 
 AWS + Vercel-এর পূর্ণ রানবুক: [`deploy/DEPLOY.md`](deploy/DEPLOY.md)
+
+Docker ইমেজ বানানো/push সহজ করতে দুটি স্ক্রিপ্ট (Windows PowerShell 5.1):
+
+```powershell
+# ১) বিল্ড + Docker Hub-এ push
+powershell -ExecutionPolicy Bypass -File scripts\docker-build.ps1 -Tag v2 -Push
+
+# ২) লোকালে চালাও — ব্যস্ত/রিজার্ভড পোর্ট নিজেই এড়িয়ে ফ্রি পোর্ট বেছে নেয়
+powershell -ExecutionPolicy Bypass -File scripts\docker-run.ps1 -Tag v2
+```
+
+ইমেজ: `tanvirsheikh/boibondhu-hackathon-backend` (public)। পোর্ট বদলাতে `HOST_PORT` env ভেরিয়েবল
+কাজ করে — compose ফাইল দুটোই `${HOST_PORT:-8000}` ব্যবহার করে।
 
 ## নোট
 

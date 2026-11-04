@@ -60,54 +60,44 @@ function configuredBase(): string {
 /**
  * Resolve the API base URL when a request is made, rather than baking it in.
  *
- * Precedence:
- *   1. NEXT_PUBLIC_API_BASE — the AWS host, set in Vercel's project settings.
- *   2. Same host, port 8000 — local development (Next on :3000, FastAPI on :8000).
- *   3. Same origin — behind a reverse proxy that also serves /api.
+ *   NEXT_PUBLIC_API_BASE set  → call that origin directly (API has its own HTTPS host).
+ *   otherwise                 → same origin: next.config.ts rewrites /api/* to
+ *                               API_PROXY_TARGET, so the browser never leaves this
+ *                               origin. That is what lets the HTTPS Vercel deployment
+ *                               reach the plain-HTTP EC2 backend, with no CORS at all.
  */
 function apiBase(): string {
   const configured = configuredBase();
   if (configured) {
     return configured;
   }
-
   if (typeof window === "undefined") {
+    // No server-side fetches exist; this only keeps relative URLs off the server.
     return `http://127.0.0.1:${API_PORT}`;
   }
-
-  const { protocol, hostname, port } = window.location;
-  if (!port || port === "80" || port === "443") {
-    // Deployed on a managed host with no API base configured: same-origin would 404
-    // on every call, so fail with an actionable message instead.
-    if (hostname.endsWith(".vercel.app")) {
-      throw new ApiError(
-        "NEXT_PUBLIC_API_BASE সেট করা নেই। Vercel-এ Project → Settings → Environment Variables-এ ব্যাকএন্ডের HTTPS ঠিকানা (যেমন https://api.your-domain) যোগ করে আবার deploy করুন।",
-        0,
-      );
-    }
-    return "";
-  }
-  return `${protocol}//${hostname}:${API_PORT}`;
+  return "";
 }
 
 /** The base URL a request would use right now — shown on the connection-error screen. */
 export function apiBaseUrl(): string {
   try {
-    return apiBase() || "(একই অরিজিন)";
+    return apiBase() || "(same origin — proxied /api)";
   } catch (error) {
-    return error instanceof Error ? error.message : "(অজানা)";
+    return error instanceof Error ? error.message : "(unknown)";
   }
 }
 
 /** One consistent, actionable message for every transport-level failure. */
 function unreachable(base: string, error: unknown): ApiError {
   const detail = error instanceof Error ? error.message : String(error ?? "");
-  const target = base || "(একই অরিজিন)";
+  const target = base || "(same origin — proxied /api)";
   const local = /127\.0\.0\.1|localhost/.test(base);
-  const hint = local
-    ? "ব্যাকএন্ড চালু আছে কি? টার্মিনালে চালাও: python -m backend.run"
-    : "ব্যাকএন্ডের ঠিকানা ঠিক আছে কি, আর ব্যাকএন্ডে এই অরিজিন CORS-এ অনুমোদিত কি?";
-  return new ApiError(`সার্ভারে সংযোগ করা যায়নি — ${target}। ${hint} [${detail}]`, 0);
+  const hint = base
+    ? local
+      ? "Is the backend running? Start it with: python -m backend.run"
+      : "Check the backend URL — and whether that origin is allowed in CORS_ORIGINS."
+    : "The /api proxy could not reach the backend. Check API_PROXY_TARGET and that the EC2 security group allows port 8000.";
+  return new ApiError(`Could not reach the server — ${target}. ${hint} [${detail}]`, 0);
 }
 
 /**

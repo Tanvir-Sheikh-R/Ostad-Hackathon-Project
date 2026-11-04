@@ -1,24 +1,30 @@
 # ========================================================
-# পাঠ সমাধান — local development stack.
+# Boi Bondhu — local development stack.
 #
 #   docker compose up -d --build      # API on http://localhost:8000
 #   cd web && npm run dev             # UI on http://localhost:3000
 #
 # The frontend is developed and deployed with Next.js (Vercel), so it is not part of
 # this file. AWS deployment lives in deploy/docker-compose.aws.yml.
+#
+# Shortcuts (Windows):
+#   pwsh scripts/docker-build.ps1
+#   pwsh scripts/docker-run.ps1        # picks a free host port automatically
 # ========================================================
-name: patsomadhan-dev
+name: boibondhu-dev
 
 services:
   backend:
     build:
       context: .
       dockerfile: deploy/Dockerfile.backend
-    image: patsomadhan-backend:dev
-    container_name: patsomadhan-backend-dev
+    image: boibondhu-hackathon-backend:dev
+    container_name: boibondhu-backend-dev
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      # HOST_PORT exists because 8000 is often taken (another backend, or a
+      # Windows-reserved range). Set HOST_PORT in .env to move it.
+      - "${HOST_PORT:-8000}:8000"
     env_file:
       - path: .env
         required: false

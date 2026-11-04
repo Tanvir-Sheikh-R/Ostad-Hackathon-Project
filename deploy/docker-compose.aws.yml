@@ -1,21 +1,27 @@
 # ========================================================
-# পাঠ সমাধান — production stack for a single AWS EC2 host.
+# Boi Bondhu — production runtime for a single AWS EC2 host.
+#
+# Runtime only: the image is built on your machine and pushed to Docker Hub, so this
+# file pulls it. (It has no `build:` section on purpose — the build context needs
+# model_cache/, which is ~1.1 GB and is not in git.)
 #
 #   cd deploy
-#   docker compose -f docker-compose.aws.yml up -d --build
+#   BACKEND_IMAGE=<dockerhub-user>/study-rag-backend:v1 \
+#     docker compose -f docker-compose.aws.yml up -d
 #
-# Serves the API over HTTPS at https://${API_DOMAIN}; the Next.js frontend lives on
-# Vercel and calls that URL (NEXT_PUBLIC_API_BASE).
+# Topology: the Vercel frontend rewrites /api/* to http://13.48.12.56:8000, so this
+# container is published on port 8000 and does not need TLS.
+#
+# Optional upgrade — own domain with automatic HTTPS:
+#   docker compose -f docker-compose.aws.yml --profile tls up -d
 # ========================================================
-name: patsomadhan
+name: boibondhu
 
 services:
   backend:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile.backend
-    image: ${BACKEND_IMAGE:-patsomadhan-backend:latest}
-    container_name: patsomadhan-backend
+    # Pinned by tag, not :latest, so a redeploy cannot silently change the build.
+    image: ${BACKEND_IMAGE:-tanvirsheikh/boibondhu-hackathon-backend:latest}
+    container_name: boibondhu-backend
     restart: unless-stopped
     env_file:
       # Keys live outside the image: GROQ_API_KEY, DEEPSEEK_API_KEY, HF_TOKEN
@@ -25,17 +31,20 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       - DATA_DIR=/app/data
-      # The Vercel production origin, plus every preview deployment.
-      - CORS_ORIGINS=${FRONTEND_ORIGIN:-http://localhost:3000}
+      # Only used by direct (non-proxied) browser calls, or a future Caddy domain.
+      - CORS_ORIGINS=${FRONTEND_ORIGIN:-https://boibondhu.vercel.app}
       - CORS_ORIGIN_REGEX=https://.*\.vercel\.app
-      # Keep the encoder resident and serve one worker: the model is ~1.1 GB and the
-      # workload is I/O-bound on the LLM, so extra workers only cost memory.
+      # One worker: the encoder is ~1.1 GB and the work is I/O-bound on the LLM.
       - WEB_CONCURRENCY=1
+    ports:
+      # Vercel's rewrite reaches this port over the public internet, so the EC2
+      # security group must allow inbound TCP 8000. Anyone who knows the IP can call
+      # it too — put auth in front before storing real student data.
+      # HOST_PORT is overridable in case 8000 is already taken on the host.
+      - "${HOST_PORT:-8000}:8000"
     volumes:
       # Chat threads (JSON) and quiz results (SQLite) survive image redeploys.
       - backend_data:/app/data
-    expose:
-      - "8000"
     healthcheck:
       test:
         - CMD
@@ -47,19 +56,26 @@ services:
       retries: 3
       start_period: 90s
     networks:
-      - patsomadhan
+      - boibondhu
 
+  # ────────────────────────────────────────────────────────
+  # Only started with --profile tls (own domain + Let's Encrypt).
+  # In proxy mode Vercel talks to :8000 directly, so this stays idle.
+  # ────────────────────────────────────────────────────────
   caddy:
+    profiles: ["tls"]
     image: caddy:2-alpine
-    container_name: patsomadhan-caddy
+    container_name: boibondhu-caddy
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
       - "443:443/udp"
     environment:
-      # A DNS name pointed at the EC2 Elastic IP (DuckDNS works and is free).
-      - API_DOMAIN=${API_DOMAIN:?set API_DOMAIN to a domain pointed at this host}
+      # Compose interpolates every service even when a profile is inactive, so this
+      # cannot use the "${VAR:?}" required form — it would block plain proxy mode.
+      # With --profile tls, API_DOMAIN must be set in .env or Caddy refuses to start.
+      - API_DOMAIN=${API_DOMAIN:-}
       - ACME_EMAIL=${ACME_EMAIL:-admin@example.com}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
@@ -69,7 +85,7 @@ services:
       backend:
         condition: service_healthy
     networks:
-      - patsomadhan
+      - boibondhu
 
 volumes:
   backend_data:
@@ -77,5 +93,5 @@ volumes:
   caddy_config:
 
 networks:
-  patsomadhan:
+  boibondhu:
     driver: bridge
