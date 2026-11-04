@@ -53,7 +53,10 @@ export function SelectionModal({
       ? (classNode.label_en ?? classNode.label)
       : classNode.label
     : "";
-  const subjects = classNode?.subjects ?? [];
+  // The API already omits subjects with no embedded chapter (Sanskrit, Finance &
+  // Banking); filtering again keeps a stale localStorage copy of the catalog out of
+  // the dropdown.
+  const subjects = (classNode?.subjects ?? []).filter((item) => item.indexed !== false);
 
   const [subjectKey, setSubjectKey] = useState<string>(
     initialContext ? `${initialContext.stream ?? ""}::${initialContext.subject}` : "",

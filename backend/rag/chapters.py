@@ -511,6 +511,16 @@ def build_tree(classes: tuple[str, ...] | None = None) -> list[dict[str, Any]]:
                 translated = titles_en.get(f"{book}::{entry['name']}")
                 if translated:
                     entry["name_en"] = translated
+
+            # A subject where no chapter is embedded cannot answer, be quizzed on or be
+            # searched — offering it only leads to a dead end, so it is left out of the
+            # catalog entirely (e.g. Sanskrit, and Finance & Banking whose cache folder
+            # name does not match chapters.json). Partially indexed books stay listed,
+            # with the unembedded chapters marked "not indexed".
+            if not any(entry["indexed"] for entry in entries):
+                logger.info("Catalog: hiding %s — no chapter has an embedding", book)
+                return
+
             subjects.append(
                 {
                     "subject": subject,
