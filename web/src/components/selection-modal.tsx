@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { GraduationCap, Loader2, TriangleAlert, X } from "lucide-react";
+import { isHiddenSubject } from "@/lib/hidden-subjects";
 import type { Chapter, ChapterContext, ClassNode, Subject } from "@/lib/types";
 import type { Language, TFunction } from "@/lib/i18n";
 
@@ -53,10 +54,12 @@ export function SelectionModal({
       ? (classNode.label_en ?? classNode.label)
       : classNode.label
     : "";
-  // The API already omits subjects with no embedded chapter (Sanskrit, Finance &
-  // Banking); filtering again keeps a stale localStorage copy of the catalog out of
-  // the dropdown.
-  const subjects = (classNode?.subjects ?? []).filter((item) => item.indexed !== false);
+  // Hide subjects that cannot be used, on the client so it holds regardless of what the
+  // API returns: no embedded chapter (Sanskrit, Finance & Banking) or explicitly
+  // excluded in lib/hidden-subjects.ts. A stale localStorage catalog is filtered too.
+  const subjects = (classNode?.subjects ?? []).filter(
+    (item) => item.indexed !== false && !isHiddenSubject(item),
+  );
 
   const [subjectKey, setSubjectKey] = useState<string>(
     initialContext ? `${initialContext.stream ?? ""}::${initialContext.subject}` : "",
