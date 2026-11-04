@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { GraduationCap, Loader2, TriangleAlert, X } from "lucide-react";
-import type { ChapterContext, ClassNode, Subject } from "@/lib/types";
+import type { Chapter, ChapterContext, ClassNode, Subject } from "@/lib/types";
 import type { Language, TFunction } from "@/lib/i18n";
 
 export type PickerResult = {
@@ -67,9 +67,18 @@ export function SelectionModal({
     subjects.find((item) => `${item.stream ?? ""}::${item.subject}` === subjectKey) ?? null;
   const chapters = subject?.chapters ?? [];
 
+  /** Display title: the English title when the translation exists, else the stored one. */
+  function titleOf(chapter: Chapter): string {
+    return language === "en" ? (chapter.name_en ?? chapter.name) : chapter.name;
+  }
+
   const query = chapterQuery.trim().toLowerCase();
   const visibleChapters = query
-    ? chapters.filter((chapter) => chapter.name.toLowerCase().includes(query))
+    ? chapters.filter(
+        (chapter) =>
+          chapter.name.toLowerCase().includes(query) ||
+          (chapter.name_en ?? "").toLowerCase().includes(query),
+      )
     : chapters;
 
   // Clear the chapter when a different subject is picked (not on first render).
@@ -106,6 +115,8 @@ export function SelectionModal({
           stream: subject.stream,
           book: subject.book,
           chapter: chapterName,
+          // Display title only; `chapter` stays the key the vector store is indexed by.
+          chapter_label: selectedChapter ? titleOf(selectedChapter) : chapterName,
           language,
         },
       });
@@ -140,8 +151,8 @@ export function SelectionModal({
           ) : null}
         </div>
 
-        {/* Coloured base box around the selection form. */}
-        <div className="mt-5 rounded-2xl bg-gradient-to-br from-accent-soft/80 via-white to-amber-50/80 p-4 ring-1 ring-accent/15">
+        {/* Soft, flat base box around the selection form (no gradient). */}
+        <div className="mt-5 rounded-2xl bg-accent-soft/55 p-4 ring-1 ring-accent/15">
           <div className="space-y-4">
             <div>
               <div className="flex items-baseline justify-between pb-1.5">
@@ -209,7 +220,8 @@ export function SelectionModal({
                 </option>
                 {visibleChapters.map((chapter) => (
                   <option key={`${chapter.number}-${chapter.name}`} value={chapter.name}>
-                    {chapter.parent ? `${chapter.parent} — ${chapter.name}` : chapter.name}
+                    {language === "bn" && chapter.parent ? `${chapter.parent} — ` : ""}
+                    {titleOf(chapter)}
                     {chapter.writer_name ? ` · ${chapter.writer_name}` : ""}
                     {chapter.starting_page
                       ? ` — ${t("picker.page", { page: chapter.starting_page })}`

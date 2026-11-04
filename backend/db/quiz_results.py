@@ -131,6 +131,7 @@ def chapter_stats(student: str) -> list[dict[str, Any]]:
             """
             SELECT subject,
                    subject_label,
+                   class_id,
                    chapter,
                    COUNT(DISTINCT quiz_id) AS quiz_count,
                    COUNT(*)                AS questions,
@@ -138,7 +139,7 @@ def chapter_stats(student: str) -> list[dict[str, Any]]:
                    MAX(created_at)         AS last_at
             FROM quiz_results
             WHERE student = ?
-            GROUP BY subject, subject_label, chapter
+            GROUP BY subject, subject_label, class_id, chapter
             ORDER BY CAST(SUM(is_correct) AS REAL) / COUNT(*) DESC, last_at DESC
             """,
             (student,),
@@ -162,13 +163,13 @@ def weak_topics(student: str, limit: int = 5) -> list[dict[str, Any]]:
     with session() as connection:
         rows = connection.execute(
             """
-            SELECT subject, subject_label, chapter, topic,
+            SELECT subject, subject_label, class_id, chapter, topic,
                    COUNT(*)        AS questions,
                    SUM(is_correct) AS correct,
                    MAX(created_at) AS last_at
             FROM quiz_results
             WHERE student = ?
-            GROUP BY subject, subject_label, chapter, topic
+            GROUP BY subject, subject_label, class_id, chapter, topic
             ORDER BY CAST(SUM(is_correct) AS REAL) / COUNT(*) ASC,
                      COUNT(*) DESC,
                      last_at DESC
@@ -231,6 +232,7 @@ def recent_attempts(student: str, limit: int = 10) -> list[dict[str, Any]]:
             SELECT quiz_id,
                    subject,
                    subject_label,
+                   class_id,
                    chapter,
                    COUNT(*)        AS questions,
                    SUM(is_correct) AS correct,

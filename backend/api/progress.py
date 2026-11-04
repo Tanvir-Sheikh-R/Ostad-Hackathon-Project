@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.api.deps import request_language
 from backend.db import quiz_results as results_db
+from backend.rag import chapters
 from backend.rag.i18n import Language, msg
 from backend.rag.summary import parent_summary
 from backend.schemas import ProgressResponse, SummaryResponse
@@ -64,13 +65,24 @@ def _cached_summary(stats: dict[str, Any], language: Language) -> dict[str, Any]
     return result
 
 
+def _localize(rows: list[dict[str, Any]], language: Language) -> list[dict[str, Any]]:
+    """Add the display title for each chapter row (English when available)."""
+    for row in rows:
+        book = f"{row.get('class_id') or ''}/{row['subject']}"
+        row["chapter_label"] = chapters.chapter_display(book, row["chapter"], language)
+    return rows
+
+
 @router.get("", response_model=ProgressResponse)
 def get_progress(
     student: str | None = Query(default=None, max_length=_STUDENT_MAX),
     language: Language = Depends(request_language),
 ) -> ProgressResponse:
     """Average score per chapter, weakest topics, and the recent attempts."""
-    return ProgressResponse(**results_db.progress_report(_student_name(student, language)))
+    report = results_db.progress_report(_student_name(student, language))
+    for key in ("chapters", "weak_topics", "recent"):
+        report[key] = _localize(report[key], language)
+    return ProgressResponse(**report)
 
 
 @router.get("/summary", response_model=SummaryResponse)

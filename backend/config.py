@@ -31,6 +31,9 @@ def _path(name: str, default: Path) -> Path:
 # --- read-only pipeline artifacts -------------------------------------------------
 CHAPTERS_INDEX = _path("CHAPTERS_INDEX", ROOT / "chapters.json")
 EMBEDDING_CACHE = _path("EMBEDDING_CACHE", ROOT / "embedding_cache")
+# English chapter titles, keyed "book::chapter" (scripts/translate_chapters.py).
+# Optional: without the file the English UI falls back to the stored title.
+CHAPTER_TITLES_EN = _path("CHAPTER_TITLES_EN", ROOT / "chapter_titles_en.json")
 
 # --- writable runtime state -------------------------------------------------------
 DATA_DIR = _path("DATA_DIR", ROOT / "backend" / "data")

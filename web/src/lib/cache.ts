@@ -70,5 +70,4 @@ export function clearCache(key: string): void {
 
 export const CACHE_KEYS = {
   catalog: "catalog",
-  health: "health",
 } as const;

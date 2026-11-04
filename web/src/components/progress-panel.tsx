@@ -205,7 +205,7 @@ export function ProgressPanel({
               <div key={`${chapter.subject}-${chapter.chapter}`}>
                 <div className="flex items-baseline justify-between gap-2">
                   <p className="min-w-0 truncate text-[13px] text-ink">
-                    {chapter.chapter}
+                    {chapter.chapter_label || chapter.chapter}
                     <span className="pl-1.5 text-[11px] text-muted">
                       {chapter.subject_label || chapter.subject}
                     </span>
@@ -237,14 +237,14 @@ export function ProgressPanel({
             <p className="flex items-center gap-1.5 text-[12px] text-emerald-700">
               <TrendingUp className="size-3.5" />
               {t("progress.best", {
-                chapter: bestChapter.chapter,
+                chapter: bestChapter.chapter_label || bestChapter.chapter,
                 accuracy: bestChapter.accuracy,
               })}
             </p>
             <p className="flex items-center gap-1.5 text-[12px] text-rose-700">
               <TrendingDown className="size-3.5" />
               {t("progress.weakest", {
-                chapter: worstChapter.chapter,
+                chapter: worstChapter.chapter_label || worstChapter.chapter,
                 accuracy: worstChapter.accuracy,
               })}
             </p>
@@ -270,7 +270,9 @@ export function ProgressPanel({
               >
                 <div className="min-w-0">
                   <p className="truncate text-[13px] font-medium text-rose-900">{topic.topic}</p>
-                  <p className="truncate text-[11.5px] text-rose-700/80">{topic.chapter}</p>
+                  <p className="truncate text-[11.5px] text-rose-700/80">
+                    {topic.chapter_label || topic.chapter}
+                  </p>
                 </div>
                 <span className="shrink-0 text-[12px] font-semibold text-rose-800">
                   {topic.correct}/{topic.questions}
@@ -316,7 +318,9 @@ export function ProgressPanel({
               className="flex items-center justify-between gap-2 py-2"
             >
               <div className="min-w-0">
-                <p className="truncate text-[12.5px] text-ink">{attemptItem.chapter}</p>
+                <p className="truncate text-[12.5px] text-ink">
+                  {attemptItem.chapter_label || attemptItem.chapter}
+                </p>
                 <p className="truncate text-[11px] text-muted">
                   {attemptItem.subject_label || attemptItem.subject} ·{" "}
                   {formatDate(attemptItem.created_at)}

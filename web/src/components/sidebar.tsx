@@ -2,18 +2,14 @@
 
 import { useState } from "react";
 import { Home, Loader2, MessageSquare, Pencil, Search, Trash2 } from "lucide-react";
-import { Avatar } from "@/components/avatar";
 import type { TFunction } from "@/lib/i18n";
-import type { CatalogCounts, Health, ThreadGroup } from "@/lib/types";
+import type { ThreadGroup } from "@/lib/types";
 
 export function Sidebar({
-  userName,
   groups,
   activeThreadId,
   search,
   loading,
-  health,
-  counts,
   onSearchChange,
   onSelectThread,
   onHome,
@@ -21,13 +17,10 @@ export function Sidebar({
   onDeleteThread,
   t,
 }: {
-  userName: string;
   groups: ThreadGroup[];
   activeThreadId: string | null;
   search: string;
   loading: boolean;
-  health: Health | null;
-  counts: CatalogCounts | null;
   onSearchChange: (value: string) => void;
   onSelectThread: (threadId: string) => void;
   onHome: () => void;
@@ -36,7 +29,6 @@ export function Sidebar({
   t: TFunction;
 }) {
   const query = search.trim().toLowerCase();
-  const retentionDays = health?.thread_retention_days;
 
   // Renaming happens inline in the row: a browser prompt() can be suppressed by the
   // user (Chrome's "prevent additional dialogs"), which made renaming silently fail.
@@ -110,11 +102,6 @@ export function Sidebar({
           <span className="text-[12px] font-medium tracking-wide text-muted">
             {t("sidebar.chats")}
           </span>
-          {retentionDays ? (
-            <p className="pt-0.5 text-[11px] leading-snug text-muted/80">
-              {t("sidebar.retention", { days: retentionDays })}
-            </p>
-          ) : null}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
@@ -205,31 +192,6 @@ export function Sidebar({
             ))
           )}
         </div>
-      </div>
-
-      <div className="border-t border-neutral-200/70 px-3 py-3">
-        {/* Display only: editing the name lives in the header's user menu. */}
-        <div className="flex items-center gap-2.5 rounded-xl px-2 py-2">
-          <Avatar name={userName} />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[14px] font-medium text-ink">{userName}</span>
-            <span className="block truncate text-[12px] text-muted">
-              {counts
-                ? t("sidebar.ready", {
-                    chapters: counts.indexed_chapters,
-                    books: counts.indexed_books,
-                  })
-                : t("sidebar.assistant")}
-            </span>
-          </span>
-        </div>
-        {health ? (
-          <p className="px-2 pt-1 text-[11px] leading-relaxed text-muted">
-            {health.llm_providers.length > 0
-              ? `${health.llm_providers.join(" / ")} · ${health.device} · ${health.dimension}d`
-              : `${t("sidebar.noLlm")} · ${health.device}`}
-          </p>
-        ) : null}
       </div>
     </aside>
   );

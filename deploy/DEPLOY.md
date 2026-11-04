@@ -23,6 +23,10 @@ GitHub repo ──▶ Vercel (web/, HTTPS)
 > **ইমেজ সাইজ:** মডেল + embedding cache মিলিয়ে ইমেজ প্রায় **1.5 GB**। পুরোনো বিল্ডে
 > `model_cache` ১০.১ GB ছিল; এখন `model_cache/e5-base/` ফ্ল্যাট ডিরেক্টরি (~1.1 GB) ব্যবহার হয়,
 > তাই pull অনেক দ্রুত।
+>
+> **ইংরেজি অধ্যায়-শিরোনাম:** `chapter_titles_en.json` ইমেজে বেক করা হয় (`deploy/Dockerfile.backend`)।
+> নতুন বই যোগ করলে বিল্ডের আগে `python scripts/translate_chapters.py` চালান; ফাইল না থাকলে
+> ইংরেজি UI-তে বাংলা শিরোনামই দেখাবে (অ্যাপ ভাঙবে না)।
 
 ---
 

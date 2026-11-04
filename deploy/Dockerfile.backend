@@ -38,6 +38,10 @@ COPY model_cache/e5-base/ ./model_cache/e5-base/
 COPY chapters.json ./
 COPY embedding_cache/ ./embedding_cache/
 
+# English chapter titles (scripts/translate_chapters.py). Optional at runtime: without
+# it the English UI falls back to the stored Bangla titles.
+COPY chapter_titles_en.json ./
+
 # --- application ----------------------------------------------------------------
 COPY backend/ ./backend/
 

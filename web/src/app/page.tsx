@@ -19,7 +19,6 @@ import type {
   CatalogResponse,
   ChapterContext,
   ChatMessage,
-  Health,
   ThreadDetail,
   ThreadGroup,
 } from "@/lib/types";
@@ -51,6 +50,7 @@ function toContext(detail: ThreadDetail): ChapterContext | null {
     stream: context.stream ?? null,
     book: context.book,
     chapter: context.chapter,
+    chapter_label: context.chapter_label,
   };
 }
 
@@ -60,7 +60,6 @@ export default function Page() {
 
   const [tab, setTab] = useState<TabKey>("chat");
   const [catalog, setCatalog] = useState<CatalogResponse | null>(null);
-  const [health, setHealth] = useState<Health | null>(null);
   const [groups, setGroups] = useState<ThreadGroup[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
 
@@ -129,12 +128,9 @@ export default function Page() {
         : null;
 
     try {
-      const [healthResponse, catalogResponse] = await Promise.all([
-        api.health(),
-        api.catalog(cached?.version),
-      ]);
-      setHealth(healthResponse);
-      writeCache(CACHE_KEYS.health, healthResponse);
+      // The catalog request doubles as the connectivity check: if it answers, the
+      // backend is up. Nothing else is fetched on boot.
+      const catalogResponse = await api.catalog(cached?.version);
       if (catalogResponse) {
         setCatalog(catalogResponse);
         writeCache(CACHE_KEYS.catalog, catalogResponse);
@@ -443,7 +439,7 @@ export default function Page() {
   }
 
   const contextLabel = context
-    ? `${context.class_label} · ${context.subject_label} · ${context.chapter}`
+    ? `${context.class_label} · ${context.subject_label} · ${context.chapter_label ?? context.chapter}`
     : null;
   const currentSubject = context
     ? catalog.classes.flatMap((item) => item.subjects).find((item) => item.book === context.book)
@@ -484,13 +480,10 @@ export default function Page() {
         >
           <div className="h-full overflow-hidden rounded-3xl bg-surface app-shadow">
             <Sidebar
-              userName={userName}
               groups={groups}
               activeThreadId={activeThreadId}
               search={search}
               loading={threadsLoading}
-              health={health}
-              counts={catalog.counts}
               onSearchChange={setSearch}
               onSelectThread={(threadId) => void loadThread(threadId)}
               onHome={goHome}

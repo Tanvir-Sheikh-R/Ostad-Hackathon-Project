@@ -7,40 +7,36 @@ import type { TFunction } from "@/lib/i18n";
 export type TabKey = "chat" | "quiz" | "progress";
 
 /**
- * Each tab owns a colour: the active tab is filled with it, inactive tabs keep a light
- * tint of the same hue so the destination is recognisable before it is selected.
+ * Each tab keeps its own colour, but as an accent rather than a filled box: the active
+ * tab is tinted text plus a line under it, inactive tabs stay neutral.
  */
 const TABS: {
   key: TabKey;
   labelKey: "tab.chat" | "tab.quiz" | "tab.progress";
   icon: LucideIcon;
-  active: string;
-  inactive: string;
-  dot: string;
+  activeText: string;
+  line: string;
 }[] = [
   {
     key: "chat",
     labelKey: "tab.chat",
     icon: MessageSquareText,
-    active: "bg-accent text-white shadow-sm",
-    inactive: "bg-accent-soft/70 text-accent-strong hover:bg-accent-soft",
-    dot: "bg-accent",
+    activeText: "text-accent-strong",
+    line: "bg-accent",
   },
   {
     key: "quiz",
     labelKey: "tab.quiz",
     icon: ListChecks,
-    active: "bg-amber-500 text-white shadow-sm",
-    inactive: "bg-amber-50 text-amber-700 hover:bg-amber-100",
-    dot: "bg-amber-500",
+    activeText: "text-amber-700",
+    line: "bg-amber-500",
   },
   {
     key: "progress",
     labelKey: "tab.progress",
     icon: LineChart,
-    active: "bg-emerald-600 text-white shadow-sm",
-    inactive: "bg-emerald-50 text-emerald-700 hover:bg-emerald-100",
-    dot: "bg-emerald-600",
+    activeText: "text-emerald-700",
+    line: "bg-emerald-600",
   },
 ];
 
@@ -59,9 +55,9 @@ export function TabNav({
     <div
       role="tablist"
       aria-label={t("tab.aria")}
-      className={`flex items-center gap-1 ${className}`}
+      className={`flex items-end gap-1 ${className}`}
     >
-      {TABS.map(({ key, labelKey, icon: Icon, active: activeClass, inactive, dot }) => {
+      {TABS.map(({ key, labelKey, icon: Icon, activeText, line }) => {
         const selected = key === active;
         return (
           <button
@@ -70,13 +66,18 @@ export function TabNav({
             role="tab"
             aria-selected={selected}
             onClick={() => onChange(key)}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-1.5 text-[13px] font-semibold transition ${
-              selected ? activeClass : inactive
+            className={`relative flex items-center gap-1.5 px-3.5 py-2 text-[13.5px] font-semibold transition ${
+              selected ? activeText : "text-neutral-500 hover:text-ink"
             }`}
           >
-            <Icon className="size-3.5" />
+            <Icon className="size-4" />
             <span>{t(labelKey)}</span>
-            {selected ? null : <span className={`size-1.5 rounded-full ${dot} opacity-60`} />}
+            <span
+              aria-hidden
+              className={`absolute inset-x-2 bottom-0 h-[2.5px] rounded-full transition-opacity ${
+                selected ? `${line} opacity-100` : "opacity-0"
+              }`}
+            />
           </button>
         );
       })}

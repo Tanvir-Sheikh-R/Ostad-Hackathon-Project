@@ -71,8 +71,11 @@ web (Vercel, HTTPS)  ──NEXT_PUBLIC_API_BASE──▶  Caddy (TLS)  ──▶
 │   └── DEPLOY.md                # ধাপে ধাপে রানবুক
 │
 ├── pipeline/                    # ডেটা তৈরির নোটবুক (chapters.json + embedding_cache)
-├── scripts/api_smoke_test.py    # এন্ড-টু-এন্ড পরীক্ষা
+├── scripts/
+│   ├── api_smoke_test.py        # এন্ড-টু-এন্ড পরীক্ষা (--lang en|bn)
+│   └── translate_chapters.py    # অধ্যায়ের শিরোনামের ইংরেজি অনুবাদ তৈরি করে
 ├── chapters.json                # অধ্যায় সূচি
+├── chapter_titles_en.json       # ইংরেজি অধ্যায়-শিরোনাম (book::chapter → title)
 ├── embedding_cache/             # প্রতি অধ্যায়ের chunks.json + FAISS index
 ├── model_cache/e5-base/         # ~1.1 GB (git-এ নেই, ইমেজে বেক করা)
 └── docker-compose.yml           # লোকাল ডেভেলপমেন্ট (শুধু API)
@@ -86,9 +89,12 @@ web (Vercel, HTTPS)  ──NEXT_PUBLIC_API_BASE──▶  Caddy (TLS)  ──▶
   চ্যাটের উত্তর, কুইজের প্রশ্ন/ব্যাখ্যা, এবং অভিভাবক সারসংক্ষেপ।
 - প্রতি রিকোয়েস্টে ভাষা যায় দুইভাবে: `X-Client-Lang` হেডার (এরর/স্ট্যাটাস মেসেজের জন্য)
   এবং `context.language` (প্রম্পটের জন্য, থ্রেডে সংরক্ষিত থাকে)।
-- **অধ্যায়ের নাম** `chapters.json` থেকে যেমন আছে তেমনই দেখায় — ওখানে ইংরেজি নামের ফিল্ড
-  নেই, তাই ৪৩৭টি শিরোনাম অনুবাদ করা হয়নি (নকল অনুবাদ না দিয়ে সৎভাবে ডেটাই দেখানো হয়)।
-  বইয়ের নাম ইংরেজি হলে (যেমন General English) শিরোনামও ইংরেজিতেই আসে।
+- **অধ্যায়ের নাম:** `chapter_titles_en.json`-এ ইংরেজি শিরোনাম থাকে (কী: `book::chapter`)।
+  ফাইলটি `scripts/translate_chapters.py` দিয়ে একবার তৈরি হয় (LLM, resumable) এবং ইমেজে বেক করা
+  হয়। অনুবাদ না থাকলে ইংরেজি UI-তে মূল শিরোনামই দেখায় — কিছুই ভাঙে না। নতুন বই যোগ করলে
+  `python scripts/translate_chapters.py` আবার চালালেই বাকিগুলো যোগ হয়।
+  **গুরুত্বপূর্ণ:** `chapter` (ডেটার কী) সবসময় বাংলাতেই থাকে — ভেক্টর স্টোর সেই নামে indexed;
+  শুধু দেখানোর লেবেল (`chapter_label`) বদলায়।
 - শিক্ষার্থীর নাম: ডিফল্ট `Student` / `শিক্ষার্থী`; হেডারের ইউজার আইকনে ক্লিক → পেন্সিল
   আইকন → নাম লিখে সেভ (`localStorage`: `patsomadhan.name`)।
 

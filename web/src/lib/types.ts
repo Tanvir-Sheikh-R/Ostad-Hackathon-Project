@@ -12,6 +12,8 @@ export type SubChapter = {
 export type Chapter = {
   name: string;
   chapter_name: string;
+  /** English title when chapter_titles_en.json has one; display only. */
+  name_en?: string;
   number: number | string | null;
   starting_page: number | null;
   sub_chapters: SubChapter[];
@@ -67,7 +69,10 @@ export type ChapterContext = {
   subject_label: string;
   stream: string | null;
   book: string;
+  /** The stored (Bangla) chapter key used for retrieval. */
   chapter: string;
+  /** Display title for `chapter` (English when available). */
+  chapter_label?: string;
   /** Answer/quiz/report language; injected by the API client when omitted. */
   language?: Language;
 };
@@ -170,7 +175,10 @@ export type QuizGrade = {
 export type ChapterStat = {
   subject: string;
   subject_label: string;
+  class_id?: string;
   chapter: string;
+  /** Display title in the request language (English when available). */
+  chapter_label?: string;
   quiz_count: number;
   questions: number;
   correct: number;
@@ -182,7 +190,9 @@ export type ChapterStat = {
 export type TopicStat = {
   subject: string;
   subject_label: string;
+  class_id?: string;
   chapter: string;
+  chapter_label?: string;
   topic: string;
   questions: number;
   correct: number;
@@ -204,7 +214,9 @@ export type RecentAttempt = {
   quiz_id: string;
   subject: string;
   subject_label: string;
+  class_id?: string;
   chapter: string;
+  chapter_label?: string;
   questions: number;
   correct: number;
   score: number;

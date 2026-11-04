@@ -22,7 +22,7 @@ export function ChapterBar({
   t: TFunction;
 }) {
   const label = context
-    ? `${context.chapter} · ${context.subject_label} · ${context.class_label}`
+    ? `${context.chapter_label ?? context.chapter} · ${context.subject_label} · ${context.class_label}`
     : t("chapter.pick");
 
   return (

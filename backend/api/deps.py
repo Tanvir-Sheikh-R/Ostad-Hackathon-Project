@@ -69,10 +69,12 @@ def trusted_context(payload: dict[str, Any], book: dict[str, Any]) -> dict[str, 
     """Build the context dict stored on a thread/result from verified server-side data.
 
     Labels are picked in the request language, so a thread created in English keeps an
-    English title in the sidebar.
+    English title in the sidebar. `chapter` stays the Bangla key the vector store is
+    indexed by; `chapter_label` is the display title.
     """
     language = normalize_language(payload.get("language"))
     english = language == "en"
+    chapter = payload["chapter"]
     return {
         "class_id": book["class_id"],
         "class_label": book["class_label_en"] if english else book["class_label"],
@@ -80,15 +82,17 @@ def trusted_context(payload: dict[str, Any], book: dict[str, Any]) -> dict[str, 
         "subject_label": book["subject_label_en"] if english else book["subject_label"],
         "stream": book["stream"],
         "book": book["book"],
-        "chapter": payload["chapter"],
+        "chapter": chapter,
+        "chapter_label": chapters.chapter_display(book["book"], chapter, language),
         "language": language,
     }
 
 
 def context_title(context: dict[str, Any]) -> str:
     """Thread title in the same shape the client displays: chapter · subject · class."""
-    return " · ".join(
-        str(context[key])
-        for key in ("chapter", "subject_label", "class_label")
-        if context.get(key)
+    parts = (
+        context.get("chapter_label") or context.get("chapter"),
+        context.get("subject_label"),
+        context.get("class_label"),
     )
+    return " · ".join(str(part) for part in parts if part)

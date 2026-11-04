@@ -16,13 +16,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import unicodedata
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from backend.config import CATALOG_CLASSES, CHAPTERS_INDEX, EMBEDDING_CACHE
+from backend.config import CATALOG_CLASSES, CHAPTERS_INDEX, CHAPTER_TITLES_EN, EMBEDDING_CACHE
+
+logger = logging.getLogger(__name__)
 
 CLASS_ORDER = ("class_5", "class_6", "class_7", "class_8", "class_9_10")
 
@@ -411,6 +414,34 @@ def chapter_label(chapter: dict[str, Any]) -> str:
     return f"{number}. {name}" if number else name
 
 
+@lru_cache(maxsize=1)
+def load_chapter_titles_en() -> dict[str, str]:
+    """English chapter titles keyed "book::chapter" (built by scripts/translate_chapters.py).
+
+    Optional on purpose: without the file the English UI falls back to the stored
+    title, so a deployment that never ran the script still works.
+    """
+    if not CHAPTER_TITLES_EN.exists():
+        return {}
+    try:
+        data = json.loads(CHAPTER_TITLES_EN.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:  # pragma: no cover - data issue
+        logger.warning("Could not read %s (%s); English chapter titles unavailable", CHAPTER_TITLES_EN, exc)
+        return {}
+    return {str(key): str(value) for key, value in data.items() if value}
+
+
+def chapter_title_en(book: str, chapter: str) -> str | None:
+    return load_chapter_titles_en().get(f"{book}::{chapter}")
+
+
+def chapter_display(book: str, chapter: str, language: str | None = None) -> str:
+    """The chapter name as the UI should show it (English title when available)."""
+    if (language or "en") == "en":
+        return chapter_title_en(book, chapter) or chapter
+    return chapter
+
+
 def catalog_classes(classes: tuple[str, ...] | None = None) -> tuple[str, ...]:
     """The classes the picker offers (CATALOG_CLASSES), falling back to everything."""
     wanted = classes if classes is not None else CATALOG_CLASSES
@@ -474,8 +505,12 @@ def build_tree(classes: tuple[str, ...] | None = None) -> list[dict[str, Any]]:
             entries = chapter_entries(chapters)
             # Mark which chapters actually have vectors, so the picker can label the
             # rest instead of letting a student pick one and hit an error later.
+            titles_en = load_chapter_titles_en()
             for entry in entries:
                 entry["indexed"] = find_chapter_dir(book, entry["name"]) is not None
+                translated = titles_en.get(f"{book}::{entry['name']}")
+                if translated:
+                    entry["name_en"] = translated
             subjects.append(
                 {
                     "subject": subject,

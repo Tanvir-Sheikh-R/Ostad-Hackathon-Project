@@ -124,7 +124,9 @@ export function QuizPanel({
             <BookOpen className="size-3.5" />
             {context.subject_label} · {context.class_label}
           </p>
-          <h2 className="truncate text-base font-bold text-ink">{context.chapter}</h2>
+          <h2 className="truncate text-base font-bold text-ink">
+            {context.chapter_label ?? context.chapter}
+          </h2>
         </div>
         {grade ? (
           <button
@@ -296,7 +298,7 @@ function ResultView({
               {t("quiz.scoreLine", {
                 correct: grade.correct,
                 total: grade.total,
-                chapter: grade.chapter,
+                chapter: grade.context.chapter_label ?? grade.chapter,
               })}
             </h3>
             <p className="pt-1 text-[12px] text-muted">

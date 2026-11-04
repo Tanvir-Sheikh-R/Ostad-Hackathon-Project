@@ -34,6 +34,9 @@ class ChapterContext(BaseModel):
     stream: str | None = None
     book: str = Field(min_length=1)
     chapter: str = Field(min_length=1)
+    # Display title for `chapter` (English when available); `chapter` itself stays the
+    # Bangla key the vector store is indexed by.
+    chapter_label: str | None = None
     language: Language = "en"
 
     @property
@@ -180,7 +183,10 @@ class QuizSubmitResponse(BaseModel):
 class ChapterStat(BaseModel):
     subject: str
     subject_label: str = ""
+    class_id: str = ""
     chapter: str
+    # Display title in the request language (English when available).
+    chapter_label: str = ""
     quiz_count: int
     questions: int
     correct: int
@@ -192,7 +198,9 @@ class ChapterStat(BaseModel):
 class TopicStat(BaseModel):
     subject: str
     subject_label: str = ""
+    class_id: str = ""
     chapter: str
+    chapter_label: str = ""
     topic: str
     questions: int
     correct: int
@@ -214,7 +222,9 @@ class RecentAttempt(BaseModel):
     quiz_id: str
     subject: str
     subject_label: str = ""
+    class_id: str = ""
     chapter: str
+    chapter_label: str = ""
     questions: int
     correct: int
     score: float
