@@ -82,6 +82,7 @@ def create_app() -> FastAPI:
 
         The browser reports a blocked preflight as a bare network error, so the server
         log is the only place the real origin is visible.
+        --- this is a demo ---
         """
         response = await call_next(request)
         if request.method == "OPTIONS" and response.status_code == 400:
